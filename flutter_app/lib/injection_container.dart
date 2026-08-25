@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'core/network/api_client.dart';
 import 'core/network/google_sign_in_service.dart';
 import 'core/network/token_storage.dart';
+import 'core/sound/sound_manager.dart';
 import 'data/repositories/auth_repository.dart';
 import 'data/repositories/game_repository.dart';
 import 'data/repositories/room_repository.dart';
@@ -17,6 +18,7 @@ final GetIt sl = GetIt.instance;
 
 Future<void> init() async {
   final prefs = await SharedPreferences.getInstance();
+  await SoundManager.instance.init(prefs);
   sl.registerLazySingleton<TokenStorage>(() => TokenStorage(prefs));
   sl.registerLazySingleton<ApiClient>(() => ApiClient(sl()));
   sl.registerLazySingleton<AuthRepository>(() => AuthRepository(sl(), sl()));

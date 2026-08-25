@@ -8,3 +8,5 @@ bcrypt>=4.3
 python-dotenv>=1.0
 google-auth>=2.36
 httpx>=0.28
+aiosqlite>=0.20
+alembic>=1.14

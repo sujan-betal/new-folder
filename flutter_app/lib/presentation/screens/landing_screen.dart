@@ -251,7 +251,10 @@ class _LandingScreenState extends State<LandingScreen>
   }
 
   void _launchLocalGame(int playerCount, {required bool vsCpu}) {
-    final colors = BoardGeometry.colors.take(playerCount).toList();
+    // Ludo King rule: with two players they sit diagonally (Red vs Yellow).
+    final colors = playerCount == 2
+        ? ['red', 'yellow']
+        : BoardGeometry.colors.take(playerCount).toList();
     final participants = <Participant>[];
     for (var i = 0; i < colors.length; i++) {
       if (vsCpu && i > 0) {

@@ -20,6 +20,7 @@ def serialize_room(room: Room) -> dict:
         "bet_amount": room.bet_amount,
         "status": room.status,
         "created_at": str(room.created_at),
+        "active_game_id": getattr(room, "active_game_id", None),
         "players": [
             {
                 "id": p.id,
@@ -44,6 +45,18 @@ async def get_room_by_code(db: AsyncSession, code: str) -> dict:
     room = result.scalar_one_or_none()
     if room is None:
         return {"error": True, "message": "Room not found", "status": 404}
+    
+    # Query active game for this room
+    from src.models.game_model import Game
+    game_result = await db.execute(
+        select(Game.id)
+        .where(Game.room_id == room.id, Game.status == "active")
+        .order_by(Game.started_at.desc())
+        .limit(1)
+    )
+    active_game_id = game_result.scalar_one_or_none()
+    room.active_game_id = active_game_id
+
     return {"error": False, "room": room}
 
 

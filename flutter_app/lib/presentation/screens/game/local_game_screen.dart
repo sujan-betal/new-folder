@@ -7,6 +7,7 @@ import '../../../game/ludo_engine.dart';
 import '../../widgets/board_view.dart';
 import '../../widgets/board_painter.dart';
 import '../../widgets/dice_widget.dart';
+import '../../widgets/sound_toggle.dart';
 
 class LocalGameScreen extends StatefulWidget {
   const LocalGameScreen({super.key, required this.participants});
@@ -65,6 +66,15 @@ class _LocalGameScreenState extends State<LocalGameScreen> {
 
   Future<void> _showWinnerDialog() async {
     final winner = _controller.participantOf(_controller.winnerColor!);
+
+    // Final standings like Ludo King: rank everyone by track progress.
+    final standings = _controller.participants
+        .map((p) => MapEntry(p, LudoEngine.progressOf(_controller.tokens[p.color]!)))
+        .toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    const medals = ['\u{1F947}', '\u{1F948}', '\u{1F949}', '4\uFE0F\u20E3'];
+
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -86,7 +96,35 @@ class _LocalGameScreenState extends State<LocalGameScreen> {
                   color: AppColors.gold,
                 ),
               ),
-              const SizedBox(height: 22),
+              const SizedBox(height: 14),
+              for (var i = 0; i < standings.length; i++)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Row(
+                    children: [
+                      Text(medals[i], style: const TextStyle(fontSize: 18)),
+                      const SizedBox(width: 8),
+                      Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color:
+                              BoardPainter.colorOf(standings[i].key.color),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          standings[i].key.name,
+                          style: const TextStyle(
+                              fontSize: 15, fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 20),
               PrimaryGameButton(
                 label: 'Play Again',
                 onTap: () {
@@ -180,6 +218,7 @@ class _LocalGameScreenState extends State<LocalGameScreen> {
               style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
             ),
           ),
+          const SoundToggle(),
           TextButton.icon(
             onPressed: () {
               showDialog<void>(
@@ -240,40 +279,41 @@ class _LocalGameScreenState extends State<LocalGameScreen> {
 
   Widget _diceBar() {
     final controller = _controller;
-    final color = BoardPainter.colorOf(controller.currentColor);
     final rolling = controller.phase == GamePhase.rolling;
+    final color = BoardPainter.colorOf(controller.currentColor);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 6, 18, 14),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+      padding: const EdgeInsets.fromLTRB(18, 2, 18, 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          DiceWidget(
-            value: controller.diceValue ?? 1,
-            rolling: rolling,
-            color: color,
-            size: 72,
-            enabled: controller.canRoll,
-            onTap: controller.roll,
+          Text(
+            controller.isHumanTurn
+                ? "${controller.currentParticipant.name}'s turn"
+                : 'CPU is thinking...',
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+              fontSize: 15,
+              color: color.withValues(alpha: 0.95),
+            ),
           ),
-          const SizedBox(width: 20),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(
-                controller.isHumanTurn
-                    ? "${controller.currentParticipant.name}'s turn"
-                    : 'CPU is thinking...',
-                style: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 16,
-                ),
+              DiceWidget(
+                value: controller.diceValue ?? 1,
+                rolling: rolling,
+                // Ludo King dice: white face, black pips, player-colored rim.
+                color: Colors.black87,
+                size: 68,
+                enabled: controller.canRoll,
+                onTap: controller.roll,
               ),
-              const SizedBox(height: 6),
+              const SizedBox(width: 22),
               PrimaryGameButton(
-                label: rolling ? '...' : 'ROLL',
-                width: 130,
+                label: controller.canRoll ? 'ROLL DICE' : '...',
+                width: 140,
                 enabled: controller.canRoll,
                 onTap: controller.roll,
               ),
@@ -302,34 +342,75 @@ class _PlayerCard extends StatelessWidget {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 250),
       margin: const EdgeInsets.symmetric(horizontal: 4),
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+      padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 6),
       decoration: BoxDecoration(
-        color: active ? color.withValues(alpha: 0.35) : Colors.black26,
-        borderRadius: BorderRadius.circular(14),
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            color.withValues(alpha: active ? 0.85 : 0.45),
+            Color.lerp(color, Colors.black, 0.35)!
+                .withValues(alpha: active ? 0.9 : 0.55),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(13),
         border: Border.all(
           color: active ? AppColors.gold : Colors.white24,
-          width: active ? 2 : 1,
+          width: active ? 2.2 : 1,
         ),
+        boxShadow: active
+            ? [
+                BoxShadow(
+                  color: AppColors.gold.withValues(alpha: 0.55),
+                  blurRadius: 12,
+                  spreadRadius: 1,
+                ),
+              ]
+            : [],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          CircleAvatar(
-            radius: 15,
-            backgroundColor: color,
-            child: Text(participant.avatar,
-                style: const TextStyle(fontSize: 14)),
+          Container(
+            padding: const EdgeInsets.all(2),
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white,
+            ),
+            child: CircleAvatar(
+              radius: 14,
+              backgroundColor: color,
+              child: Text(participant.avatar,
+                  style: const TextStyle(fontSize: 13)),
+            ),
           ),
-          const SizedBox(height: 5),
+          const SizedBox(height: 4),
           Text(
             participant.name,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+            style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+                shadows: [Shadow(blurRadius: 3, color: Colors.black54)]),
           ),
-          Text(
-            '\u{1F3E0} $tokensHome/4',
-            style: const TextStyle(fontSize: 10, color: Colors.white70),
+          const SizedBox(height: 3),
+          // Ludo King style: 4 little house pips fill as tokens finish.
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(4, (i) {
+              final done = i < tokensHome;
+              return Container(
+                width: 9,
+                height: 9,
+                margin: const EdgeInsets.symmetric(horizontal: 1.5),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: done ? Colors.white : Colors.white24,
+                  border: Border.all(color: Colors.white70, width: 0.8),
+                ),
+              );
+            }),
           ),
         ],
       ),

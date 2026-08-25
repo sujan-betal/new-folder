@@ -72,9 +72,53 @@ class _LoginScreenState extends State<LoginScreen> {
             provider: 'google', token: idToken);
       } on ApiExceptionMessage catch (e) {
         auth.setTransientError(e.toString());
+        if (mounted) _showGoogleSetupHint(e.toString());
         return false;
       }
     });
+  }
+
+  void _showGoogleSetupHint(String reason) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.navyLight,
+        title: const Text('Google Sign-In setup'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                  'Sign-in is wired up but needs your Google OAuth '
+                  '"Web Client ID" (free, ~2 minutes):'),
+              const SizedBox(height: 10),
+              const Text('1. console.cloud.google.com > APIs & Services > '
+                  'Credentials'),
+              const Text('2. Create OAuth Client ID (type: Web application)'),
+              const Text('3. Paste it in BOTH places:'),
+              const Text('   - flutter_app/web/index.html '
+                  '(google-signin-client_id meta)'),
+              const Text('   - lib/core/constants/social_config.dart '
+                  '(googleServerClientId)'),
+              const Text('4. Backend .env: GOOGLE_CLIENT_ID=same-id '
+                  '(optional audience check)'),
+              const SizedBox(height: 12),
+              Text('Details: $reason',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.white.withValues(alpha: 0.5))),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _facebook() async {
@@ -210,19 +254,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     Row(
                       children: [
                         Expanded(
-                          child: _SocialButton(
-                            label: 'Google',
-                            icon: Icons.g_mobiledata,
-                            iconColor: Colors.redAccent,
+                          child: _GoogleButton(
                             busy: _busyWith == 'google',
                             enabled: !busy,
-                            onTap: isMobileTarget
-                                ? _google
-                                : () => ScaffoldMessenger.of(context)
-                                    .showSnackBar(const SnackBar(
-                                    content: Text(
-                                        'Google Sign-In works on Android/iOS builds'),
-                                  )),
+                            onTap: _google,
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -267,6 +302,69 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GoogleButton extends StatelessWidget {
+  const _GoogleButton({required this.busy, required this.enabled, required this.onTap});
+
+  final bool busy;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  static const _brand = [
+    Color(0xFF4285F4),
+    Color(0xFFEA4335),
+    Color(0xFFFBBC05),
+    Color(0xFF4285F4),
+    Color(0xFF34A853),
+    Color(0xFFEA4335),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: enabled ? 1 : 0.5,
+      child: GestureDetector(
+        onTap: enabled ? onTap : null,
+        child: Container(
+          height: 52,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.25),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Center(
+            child: busy
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (var i = 0; i < _brand.length; i++)
+                        Text(
+                          'Google'[i],
+                          style: TextStyle(
+                            fontSize: 17,
+                            height: 1.0,
+                            fontWeight: FontWeight.w800,
+                            color: _brand[i],
+                          ),
+                        ),
+                    ],
+                  ),
           ),
         ),
       ),

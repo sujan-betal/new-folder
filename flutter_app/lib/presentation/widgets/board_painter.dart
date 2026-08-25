@@ -6,7 +6,10 @@ import '../../core/constants/app_colors.dart';
 import '../../game/board_geometry.dart';
 
 class BoardPainter extends CustomPainter {
-  const BoardPainter();
+  const BoardPainter({this.activeColor});
+
+  /// Color of the player whose turn it is - their base gets a glow.
+  final String? activeColor;
 
   static Color colorOf(String name) {
     switch (name) {
@@ -37,13 +40,43 @@ class BoardPainter extends CustomPainter {
   void _drawBases(Canvas canvas, double cell) {
     BoardGeometry.baseOrigins.forEach((name, origin) {
       final color = colorOf(name);
+      final isActive = name == activeColor;
       final baseRect = Rect.fromLTWH(
         origin.dx * cell,
         origin.dy * cell,
         cell * 6,
         cell * 6,
       );
-      canvas.drawRect(baseRect, Paint()..color = color);
+
+      // Soft golden glow behind the active player's quadrant.
+      if (isActive) {
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(baseRect.deflate(cell * 0.12),
+              Radius.circular(cell * 0.5)),
+          Paint()
+            ..color = AppColors.gold.withValues(alpha: 0.55)
+            ..maskFilter = MaskFilter.blur(BlurStyle.normal, cell * 0.55),
+        );
+      }
+
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(baseRect, Radius.circular(cell * 0.35)),
+        Paint()..color = color,
+      );
+      // Subtle top-light bevel like Ludo King's raised bases.
+      canvas.drawRect(
+        baseRect,
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.white.withValues(alpha: 0.22),
+              Colors.transparent,
+              Colors.black.withValues(alpha: 0.18),
+            ],
+          ).createShader(baseRect),
+      );
 
       final inner = Rect.fromLTWH(
         (origin.dx + 1) * cell,
@@ -56,7 +89,7 @@ class BoardPainter extends CustomPainter {
         Paint()..color = Colors.white,
       );
 
-      final slots = const [
+      const slots = [
         Offset(2, 2),
         Offset(2, 4),
         Offset(4, 2),
@@ -95,13 +128,14 @@ class BoardPainter extends CustomPainter {
       final rc = BoardGeometry.ringCells[i];
       canvas.drawRect(_rect(rc[0], rc[1], cell), fill);
 
-      final startColor = BoardGeometry.startOffsets.entries
+      final startEntry = BoardGeometry.startOffsets.entries
           .where((e) => e.value == i)
           .map((e) => e.key)
           .toList();
-      if (startColor.isNotEmpty) {
-        canvas.drawRect(_rect(rc[0], rc[1], cell),
-            Paint()..color = colorOf(startColor.first).withValues(alpha: 0.85));
+      if (startEntry.isNotEmpty) {
+        final color = colorOf(startEntry.first);
+        canvas.drawRect(_rect(rc[0], rc[1], cell), Paint()..color = color);
+        _drawArrow(canvas, rc[0], rc[1], startEntry.first, cell);
       } else if (BoardGeometry.safeSquares.contains(i)) {
         final center = Offset((rc[1] + 0.5) * cell, (rc[0] + 0.5) * cell);
         _drawStar(canvas, center, cell * 0.34);
@@ -109,6 +143,37 @@ class BoardPainter extends CustomPainter {
 
       canvas.drawRect(_rect(rc[0], rc[1], cell), stroke);
     }
+  }
+
+  /// White direction arrow on a colored starting square, Ludo King style.
+  void _drawArrow(
+    Canvas canvas,
+    int row,
+    int col,
+    String colorName,
+    double cell,
+  ) {
+    // Movement direction leaving each start square.
+    final angles = <String, double>{
+      'red': 0, // east
+      'green': math.pi / 2, // south
+      'yellow': math.pi, // west
+      'blue': -math.pi / 2, // north
+    };
+    final center = Offset((col + 0.5) * cell, (row + 0.5) * cell);
+    final r = cell * 0.28;
+    final path = Path()
+      ..moveTo(center.dx + r, center.dy)
+      ..lineTo(center.dx - r * 0.5, center.dy - r * 0.75)
+      ..lineTo(center.dx - r * 0.25, center.dy)
+      ..lineTo(center.dx - r * 0.5, center.dy + r * 0.75)
+      ..close();
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    canvas.rotate(angles[colorName] ?? 0);
+    canvas.translate(-center.dx, -center.dy);
+    canvas.drawPath(path, Paint()..color = Colors.white.withValues(alpha: 0.92));
+    canvas.restore();
   }
 
   void _drawStar(Canvas canvas, Offset center, double radius) {
@@ -185,5 +250,6 @@ class BoardPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant BoardPainter oldDelegate) =>
+      oldDelegate.activeColor != activeColor;
 }

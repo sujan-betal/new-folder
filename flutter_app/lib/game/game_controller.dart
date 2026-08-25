@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
+import '../core/sound/sound_manager.dart';
 import 'board_geometry.dart';
 import 'ludo_ai.dart';
 import 'ludo_engine.dart';
@@ -69,6 +70,7 @@ class GameController extends ChangeNotifier {
   Future<void> _doRoll() async {
     final gen = ++_generation;
     phase = GamePhase.rolling;
+    SoundManager.instance.diceRoll();
     notifyListeners();
 
     await Future<void>.delayed(const Duration(milliseconds: 650));
@@ -137,21 +139,54 @@ class GameController extends ChangeNotifier {
 
     phase = GamePhase.moving;
     movable = {};
-    final result = LudoEngine.applyMove(tokens, color, tokenIndex, value);
+
+    // ---- Ludo King style: hop cell by cell with a click each step. ----
+    final start = tokens[color]![tokenIndex];
+    var target = start == LudoEngine.basePos ? 0 : start + value;
+    if (target > LudoEngine.homeDone) target = LudoEngine.homeDone;
+    for (var pos = (start == LudoEngine.basePos ? -1 : start) + 1;
+        pos <= target;
+        pos++) {
+      tokens[color]![tokenIndex] = pos;
+      SoundManager.instance.move();
+      notifyListeners();
+      await Future<void>.delayed(const Duration(milliseconds: 130));
+      if (!_alive(gen)) return;
+    }
+
+    // Position already at target; apply captures / flags via the engine.
+    final result = LudoEngine.resolveAfterMove(tokens, color, target);
     notifyListeners();
 
     if (result.captured) {
+      SoundManager.instance.capture();
       for (final victim in result.capturedColors) {
         onEvent?.call(
             '${_label(color)} captured ${_label(victim)}! Extra turn');
       }
     }
     if (result.reachedHome) {
+      SoundManager.instance.home();
       onEvent?.call('${_label(color)} sent a token home! Extra turn');
+    } else {
+      final landedAbs =
+          target <= LudoEngine.trackEnd
+              ? BoardGeometry.absoluteSquare(color, target)
+              : -1;
+      if (landedAbs >= 0 && BoardGeometry.safeSquares.contains(landedAbs)) {
+        SoundManager.instance.safe();
+      }
     }
 
-    await Future<void>.delayed(const Duration(milliseconds: 320));
     if (!_alive(gen)) return;
+
+    if (result.finished) {
+      winnerColor ??= color;
+      phase = GamePhase.finished;
+      SoundManager.instance.win();
+      notifyListeners();
+      return;
+    }
 
     if (result.finished) {
       winnerColor ??= color;
@@ -177,6 +212,7 @@ class GameController extends ChangeNotifier {
     diceValue = null;
     _advanceToNextActive();
     phase = GamePhase.awaitingRoll;
+    SoundManager.instance.turn();
     notifyListeners();
     await _maybeCpuTurn();
   }

@@ -29,7 +29,10 @@ class BoardView extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final side = constraints.biggest.shortestSide;
+        // Ludo King style outer frame around the playing grid.
+        const framePad = 9.0;
+        final outer = constraints.biggest.shortestSide;
+        final side = outer - framePad * 2;
         final cell = side / BoardGeometry.gridSize;
 
         final entries = <_TokenEntry>[];
@@ -64,17 +67,46 @@ class BoardView extends StatelessWidget {
           }
         }
 
-        return SizedBox(
-          width: side,
-          height: side,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Positioned.fill(
-                child: CustomPaint(painter: const BoardPainter()),
+        return Container(
+          width: outer,
+          height: outer,
+          padding: const EdgeInsets.all(framePad),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF243B6B), Color(0xFF14213D)],
+            ),
+            borderRadius: BorderRadius.circular(framePad * 2.4),
+            border: Border.all(
+              color: AppColors.gold.withValues(alpha: 0.55),
+              width: 1.6,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.5),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
               ),
-              for (final e in entries) _token(e, cell),
             ],
+          ),
+          child: SizedBox(
+            width: side,
+            height: side,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Positioned.fill(
+                  child: CustomPaint(
+                    painter: BoardPainter(
+                      activeColor: highlightCurrent ? currentColor : null,
+                    ),
+                  ),
+                ),
+                for (final e in entries)
+                  _token(e, cell),
+              ],
+            ),
           ),
         );
       },
@@ -87,49 +119,7 @@ class BoardView extends StatelessWidget {
     final canMove = isMine && movable.contains(entry.tokenIndex);
     final size = cell * 0.74;
 
-    final token = Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color.lerp(color, Colors.white, 0.35)!,
-            color,
-            Color.lerp(color, Colors.black, 0.25)!,
-          ],
-        ),
-        border: Border.all(
-          color: canMove ? AppColors.gold : Colors.white,
-          width: canMove ? 2.6 : 1.8,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.4),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-          if (canMove)
-            BoxShadow(
-              color: AppColors.gold.withValues(alpha: 0.9),
-              blurRadius: 10,
-              spreadRadius: 2,
-            ),
-        ],
-      ),
-      child: Center(
-        child: Container(
-          width: size * 0.42,
-          height: size * 0.42,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: Colors.white.withValues(alpha: 0.85),
-          ),
-        ),
-      ),
-    );
+    final token = _PawnToken(size: size, color: color, glowing: canMove);
 
     Widget result = AnimatedPositioned(
       key: ValueKey('${entry.color}_${entry.tokenIndex}'),
@@ -137,7 +127,9 @@ class BoardView extends StatelessWidget {
       curve: Curves.easeInOutCubic,
       left: entry.center.dx - size / 2,
       top: entry.center.dy - size / 2,
-      child: token,
+      child: canMove
+          ? _PulsingBox(cell: cell, child: token)
+          : token,
     );
 
     if (canMove && onTokenTap != null) {
@@ -153,13 +145,149 @@ class BoardView extends StatelessWidget {
           child: SizedBox(
             width: cell * 1.5,
             height: cell * 1.5,
-            child: Center(child: token),
+            child: Center(child: _PulsingBox(cell: cell, child: token)),
           ),
         ),
       );
     }
 
     return result;
+  }
+}
+
+/// Glossy pawn token, Ludo King style.
+class _PawnToken extends StatelessWidget {
+  const _PawnToken({
+    required this.size,
+    required this.color,
+    required this.glowing,
+  });
+
+  final double size;
+  final Color color;
+  final bool glowing;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Drop shadow.
+          Positioned(
+            bottom: 0,
+            child: Container(
+              width: size * 0.86,
+              height: size * 0.3,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.black.withValues(alpha: 0.35),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.3),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // Body.
+          Container(
+            width: size * 0.82,
+            height: size * 0.82,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                center: const Alignment(-0.35, -0.35),
+                radius: 1.1,
+                colors: [
+                  Color.lerp(color, Colors.white, 0.55)!,
+                  color,
+                  Color.lerp(color, Colors.black, 0.35)!,
+                ],
+                stops: const [0.0, 0.55, 1.0],
+              ),
+              border: Border.all(
+                color: glowing ? AppColors.gold : Colors.white,
+                width: glowing ? 2.6 : 1.8,
+              ),
+              boxShadow: glowing
+                  ? [
+                      BoxShadow(
+                        color: AppColors.gold.withValues(alpha: 0.85),
+                        blurRadius: 12,
+                        spreadRadius: 2,
+                      ),
+                    ]
+                  : [],
+            ),
+          ),
+          // White collar ring.
+          Container(
+            width: size * 0.44,
+            height: size * 0.44,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white.withValues(alpha: 0.92),
+              border: Border.all(
+                color: Color.lerp(color, Colors.black, 0.25)!,
+                width: 1.2,
+              ),
+            ),
+          ),
+          // Head sphere.
+          Container(
+            width: size * 0.26,
+            height: size * 0.26,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                center: const Alignment(-0.3, -0.3),
+                colors: [
+                  Color.lerp(color, Colors.white, 0.65)!,
+                  color,
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Gentle heartbeat animation for tokens the player can move.
+class _PulsingBox extends StatefulWidget {
+  const _PulsingBox({required this.cell, required this.child});
+
+  final double cell;
+  final Widget child;
+
+  @override
+  State<_PulsingBox> createState() => _PulsingBoxState();
+}
+
+class _PulsingBoxState extends State<_PulsingBox>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 550),
+    lowerBound: 0.94,
+    upperBound: 1.08,
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaleTransition(scale: _controller, child: widget.child);
   }
 }
 

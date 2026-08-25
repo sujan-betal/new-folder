@@ -76,6 +76,45 @@ class LudoEngine {
 
   static bool isFinished(List<int> tokens) => tokens.every((p) => p == homeDone);
 
+  /// Capture/finish resolution for a token that has ALREADY been moved
+  /// (animated step by step) to [finalPos].
+  static MoveResult resolveAfterMove(
+    Map<String, List<int>> allTokens,
+    String color,
+    int finalPos,
+  ) {
+    final capturedColors = <String>[];
+    var captured = false;
+
+    final abs =
+        finalPos <= trackEnd ? BoardGeometry.absoluteSquare(color, finalPos) : -1;
+    if (abs >= 0 && !BoardGeometry.safeSquares.contains(abs)) {
+      for (final other in BoardGeometry.colors) {
+        if (other == color || !allTokens.containsKey(other)) continue;
+        final offset = BoardGeometry.startOffsets[other]!;
+        final oppTokens = allTokens[other]!;
+        for (var i = 0; i < oppTokens.length; i++) {
+          final p = oppTokens[i];
+          if (p < 0 || p > trackEnd) continue;
+          if ((offset + p) % 52 == abs) {
+            oppTokens[i] = basePos;
+            captured = true;
+            if (!capturedColors.contains(other)) capturedColors.add(other);
+          }
+        }
+      }
+    }
+
+    return MoveResult(
+      from: -2,
+      to: finalPos,
+      captured: captured,
+      capturedColors: capturedColors,
+      reachedHome: finalPos == homeDone,
+      finished: allTokens[color]!.every((p) => p == homeDone),
+    );
+  }
+
   static int tokensHome(List<int> tokens) =>
       tokens.where((p) => p == homeDone).length;
 

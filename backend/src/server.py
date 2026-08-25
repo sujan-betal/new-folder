@@ -1,13 +1,22 @@
 import asyncio
+import os
 import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
+
+# Allow starting both ways:  python -m src.server   |   python src/server.py
+_BACKEND_ROOT = str(Path(__file__).resolve().parents[1])
+if _BACKEND_ROOT not in sys.path:
+    sys.path.insert(0, _BACKEND_ROOT)
+
+if sys.platform == "win32":
+    # psycopg async mode requires a selector loop. This must be set BEFORE any
+    # event loop is created, i.e. before uvicorn boots the app.
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
-if sys.platform == "win32":
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from src.config.database import Base, engine
 from src.config.settings import settings
@@ -55,4 +64,16 @@ app = create_app()
 
 
 if __name__ == "__main__":
-    uvicorn.run("src.server:app", host="0.0.0.0", port=8000, reload=True)
+    # NOTE: do NOT start this file via `uvicorn src.server:app` on Windows.
+    # Recent uvicorn versions force a ProactorEventLoop there, which breaks
+    # psycopg async. Starting from here keeps our selector-loop policy.
+    port = int(os.getenv("PORT", str(settings.PORT)))
+    config = uvicorn.Config(
+        app,
+        host="0.0.0.0",
+        port=port,
+        loop="none",  # respect the policy set above instead of uvicorn's proactor default
+        log_level="info",
+    )
+    server = uvicorn.Server(config)
+    server.run()

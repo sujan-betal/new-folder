@@ -92,6 +92,7 @@ async def start_game_service(db: AsyncSession, user: User, mode: str, room_code:
             room.status = "playing"
         else:
             bot = await _get_or_create_bot(db)
+            # Ludo King style: two players sit diagonally (Red vs Yellow).
             participants = [
                 {
                     "color": "red",
@@ -101,7 +102,7 @@ async def start_game_service(db: AsyncSession, user: User, mode: str, room_code:
                     "avatar": user.avatar or "\U0001F3B2",
                 },
                 {
-                    "color": "blue",
+                    "color": "yellow",
                     "user_id": bot.id,
                     "is_bot": True,
                     "username": "CPU",

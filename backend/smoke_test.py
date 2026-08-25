@@ -88,7 +88,7 @@ async def main() -> None:
         parts = {p["color"]: p for p in game["state"]["participants"]}
         assert parts["red"]["username"] == creds["username"]
         assert parts["red"]["avatar"] == cat["emoji"]
-        assert parts["blue"]["is_bot"] and parts["blue"]["username"] == "CPU"
+        assert parts["yellow"]["is_bot"] and parts["yellow"]["username"] == "CPU"
         gid = game["id"]
         print(f"[ok] game {gid} started with dynamic participants")
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -9,6 +11,7 @@ import '../../../logic/providers/game_online_provider.dart';
 import '../../widgets/board_painter.dart';
 import '../../widgets/board_view.dart';
 import '../../widgets/dice_widget.dart';
+import '../../widgets/sound_toggle.dart';
 import '../game/local_game_screen.dart' show PrimaryGameButton;
 
 class OnlineGameScreen extends StatefulWidget {
@@ -24,18 +27,56 @@ class _OnlineGameScreenState extends State<OnlineGameScreen> {
   late final GameOnlineProvider _provider;
   bool _showingResult = false;
 
+  // Ludo King style turn countdown: resets on every state change.
+  static const int _turnSeconds = 15;
+  int _secondsLeft = _turnSeconds;
+  Timer? _tickTimer;
+  String? _timerKey;
+
   @override
   void initState() {
     super.initState();
     _provider = di.sl<GameOnlineProvider>();
     _provider.onFinished = _presentResult;
+    _provider.addListener(_onGameChanged);
     _provider.load(widget.gameId);
   }
 
   @override
   void dispose() {
-    _provider.dispose();
+    _tickTimer?.cancel();
+    _provider
+      ..removeListener(_onGameChanged)
+      ..dispose();
     super.dispose();
+  }
+
+  void _onGameChanged() {
+    if (!mounted) return;
+    final game = _provider.game;
+    if (game == null) return;
+
+    final key =
+        '${game.id}|${game.currentTurn}|${game.diceValue ?? '-'}|${game.status}';
+    if (key == _timerKey) return;
+    _timerKey = key;
+
+    if (game.isActive && game.diceValue == null) {
+      setState(() => _secondsLeft = _turnSeconds);
+      _tickTimer?.cancel();
+      _tickTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
+        if (!mounted) return;
+        if (_secondsLeft <= 1) {
+          _tickTimer?.cancel();
+          // Timeout: auto-roll for the player, exactly like Ludo King.
+          if (_provider.canRoll) await _provider.rollDice();
+          return;
+        }
+        setState(() => _secondsLeft -= 1);
+      });
+    } else {
+      _tickTimer?.cancel();
+    }
   }
 
   Future<void> _presentResult() async {
@@ -169,9 +210,6 @@ class _OnlineGameScreenState extends State<OnlineGameScreen> {
       child: Consumer<GameOnlineProvider>(
         builder: (context, provider, _) {
           final game = provider.game;
-          final turnColor = game == null
-              ? Colors.white
-              : BoardPainter.colorOf(game.currentTurn);
 
           return Scaffold(
             body: Container(
@@ -213,6 +251,35 @@ class _OnlineGameScreenState extends State<OnlineGameScreen> {
                                         fontWeight: FontWeight.w700),
                                   ),
                                 ),
+                                if (game.isActive && game.diceValue == null)
+                                  Container(
+                                    margin: const EdgeInsets.only(right: 8),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: _secondsLeft <= 5
+                                          ? Colors.red.withValues(alpha: 0.25)
+                                          : Colors.black26,
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: _secondsLeft <= 5
+                                            ? Colors.redAccent
+                                            : Colors.white24,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      '\u23F1 ${_secondsLeft}s',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w800,
+                                        color: _secondsLeft <= 5
+                                            ? Colors.redAccent
+                                            : Colors.white70,
+                                      ),
+                                    ),
+                                  ),
+                                const SizedBox(width: 4),
+                                const SoundToggle(),
                                 Text(
                                   'You: ${provider.myColor ?? '-'}',
                                   style: TextStyle(
@@ -258,8 +325,9 @@ class _OnlineGameScreenState extends State<OnlineGameScreen> {
                               children: [
                                 DiceWidget(
                                   value: game.diceValue ?? 1,
-                                  rolling: false,
-                                  color: turnColor,
+                                  rolling: provider.busy &&
+                                      game.diceValue == null,
+                                  color: Colors.black87,
                                   size: 68,
                                   enabled: provider.canRoll,
                                   onTap: provider.rollDice,

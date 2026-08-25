@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../core/sound/sound_manager.dart';
 import '../../data/models/room_model.dart';
 import '../../data/repositories/game_repository.dart';
 import '../../game/ludo_engine.dart';
@@ -70,6 +71,10 @@ class GameOnlineProvider extends ChangeNotifier {
               fresh.diceValue != game!.diceValue ||
               fresh.tokens.toString() != game!.tokens.toString();
           if (changed) {
+            // Your-turn ding like Ludo King.
+            if (fresh.currentTurn == myColor && fresh.diceValue == null) {
+              SoundManager.instance.turn();
+            }
             game = fresh;
             movable = {};
             notifyListeners();
@@ -92,6 +97,9 @@ class GameOnlineProvider extends ChangeNotifier {
     if (_finishedNotified) return;
     _finishedNotified = true;
     _pollTimer?.cancel();
+    if (game?.winnerId != null && game!.winnerId == myUserId) {
+      SoundManager.instance.win();
+    }
     onFinished?.call();
   }
 
@@ -103,6 +111,7 @@ class GameOnlineProvider extends ChangeNotifier {
     try {
       await _repository.roll(game!.id);
       game = await _repository.get(game!.id);
+      SoundManager.instance.diceRoll();
       final color = myColor;
       lastRollLabel =
           '${_capitalize(color ?? '')} rolled ${game!.diceValue ?? '?'}';
@@ -123,6 +132,7 @@ class GameOnlineProvider extends ChangeNotifier {
     try {
       await _repository.move(game!.id, tokenIndex);
       game = await _repository.get(game!.id);
+      SoundManager.instance.move();
       movable = {};
       if (!game!.isActive) _notifyFinishedOnce();
     } catch (e) {
