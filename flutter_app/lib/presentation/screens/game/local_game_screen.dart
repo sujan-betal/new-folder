@@ -1,0 +1,387 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../../../core/constants/app_colors.dart';
+import '../../../game/game_controller.dart';
+import '../../../game/ludo_engine.dart';
+import '../../widgets/board_view.dart';
+import '../../widgets/board_painter.dart';
+import '../../widgets/dice_widget.dart';
+
+class LocalGameScreen extends StatefulWidget {
+  const LocalGameScreen({super.key, required this.participants});
+
+  final List<Participant> participants;
+
+  @override
+  State<LocalGameScreen> createState() => _LocalGameScreenState();
+}
+
+class _LocalGameScreenState extends State<LocalGameScreen> {
+  late final GameController _controller;
+  bool _showingWinner = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = GameController(
+      participants: widget.participants,
+      onEvent: _showToast,
+    )..addListener(_onChanged);
+    _controller.start();
+  }
+
+  @override
+  void dispose() {
+    _controller
+      ..removeListener(_onChanged)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _onChanged() {
+    if (_controller.phase == GamePhase.finished &&
+        !_showingWinner &&
+        mounted) {
+      _showingWinner = true;
+      HapticFeedback.mediumImpact();
+      _showWinnerDialog();
+    }
+  }
+
+  void _showToast(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          duration: const Duration(milliseconds: 1400),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: Colors.black87,
+          content: Text(message),
+        ),
+      );
+  }
+
+  Future<void> _showWinnerDialog() async {
+    final winner = _controller.participantOf(_controller.winnerColor!);
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        backgroundColor: AppColors.navyLight,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: Padding(
+          padding: const EdgeInsets.all(26),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('\u{1F3C6}', style: TextStyle(fontSize: 64)),
+              const SizedBox(height: 10),
+              Text(
+                '${winner.name} wins!',
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.gold,
+                ),
+              ),
+              const SizedBox(height: 22),
+              PrimaryGameButton(
+                label: 'Play Again',
+                onTap: () {
+                  Navigator.of(context).pop();
+                  setState(() => _showingWinner = false);
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          LocalGameScreen(participants: widget.participants),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context)
+                    ..pop()
+                    ..pop();
+                },
+                child: const Text(
+                  'Back to menu',
+                  style: TextStyle(color: Colors.white70),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        decoration:
+            const BoxDecoration(gradient: AppColors.backgroundGradient),
+        child: SafeArea(
+          child: AnimatedBuilder(
+            animation: _controller,
+            builder: (context, _) {
+              final controller = _controller;
+              return Column(
+                children: [
+                  _header(context),
+                  Expanded(child: _playerStrip()),
+                  Expanded(
+                    flex: 6,
+                    child: Center(
+                      child: AspectRatio(
+                        aspectRatio: 1,
+                        child: Padding(
+                          padding: const EdgeInsets.all(8),
+                          child: BoardView(
+                            tokens: controller.tokens,
+                            currentColor: controller.currentColor,
+                            movable: controller.movable,
+                            onTokenTap: (color, index) =>
+                                controller.moveToken(index),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  _diceBar(),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _header(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Text(
+              widget.participants.any((p) => p.isCpu)
+                  ? 'You vs Computer'
+                  : 'Pass & Play',
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+            ),
+          ),
+          TextButton.icon(
+            onPressed: () {
+              showDialog<void>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  backgroundColor: AppColors.navyLight,
+                  title: const Text('Restart game?'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Cancel'),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        Navigator.of(context).pushReplacement(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                LocalGameScreen(participants: widget.participants),
+                          ),
+                        );
+                      },
+                      child: const Text('Restart'),
+                    ),
+                  ],
+                ),
+              );
+            },
+            icon: const Icon(Icons.refresh, color: AppColors.gold),
+            label: const Text('Restart',
+                style: TextStyle(color: AppColors.gold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _playerStrip() {
+    final controller = _controller;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      child: Row(
+        children: [
+          for (var i = 0; i < controller.participants.length; i++)
+            Expanded(
+              child: _PlayerCard(
+                participant: controller.participants[i],
+                active: controller.currentColor ==
+                    controller.participants[i].color,
+                tokensHome:
+                    LudoEngine.tokensHome(controller.tokens[controller.participants[i].color]!),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _diceBar() {
+    final controller = _controller;
+    final color = BoardPainter.colorOf(controller.currentColor);
+    final rolling = controller.phase == GamePhase.rolling;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 6, 18, 14),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          DiceWidget(
+            value: controller.diceValue ?? 1,
+            rolling: rolling,
+            color: color,
+            size: 72,
+            enabled: controller.canRoll,
+            onTap: controller.roll,
+          ),
+          const SizedBox(width: 20),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                controller.isHumanTurn
+                    ? "${controller.currentParticipant.name}'s turn"
+                    : 'CPU is thinking...',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 6),
+              PrimaryGameButton(
+                label: rolling ? '...' : 'ROLL',
+                width: 130,
+                enabled: controller.canRoll,
+                onTap: controller.roll,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlayerCard extends StatelessWidget {
+  const _PlayerCard({
+    required this.participant,
+    required this.active,
+    required this.tokensHome,
+  });
+
+  final Participant participant;
+  final bool active;
+  final int tokensHome;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = BoardPainter.colorOf(participant.color);
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
+      margin: const EdgeInsets.symmetric(horizontal: 4),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+      decoration: BoxDecoration(
+        color: active ? color.withValues(alpha: 0.35) : Colors.black26,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: active ? AppColors.gold : Colors.white24,
+          width: active ? 2 : 1,
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircleAvatar(
+            radius: 15,
+            backgroundColor: color,
+            child: Text(participant.avatar,
+                style: const TextStyle(fontSize: 14)),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            participant.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+          ),
+          Text(
+            '\u{1F3E0} $tokensHome/4',
+            style: const TextStyle(fontSize: 10, color: Colors.white70),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class PrimaryGameButton extends StatelessWidget {
+  const PrimaryGameButton({
+    super.key,
+    required this.label,
+    required this.onTap,
+    this.enabled = true,
+    this.width,
+  });
+
+  final String label;
+  final VoidCallback? onTap;
+  final bool enabled;
+  final double? width;
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: enabled ? 1 : 0.55,
+      child: GestureDetector(
+        onTap: enabled ? onTap : null,
+        child: Container(
+          width: width,
+          height: 44,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            gradient: AppColors.goldGradient,
+            borderRadius: BorderRadius.circular(13),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.goldDark.withValues(alpha: 0.45),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontWeight: FontWeight.w900,
+              fontSize: 16,
+              color: Color(0xFF4A2C00),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
