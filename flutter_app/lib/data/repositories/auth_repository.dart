@@ -31,6 +31,27 @@ class AuthRepository {
     return fetchMe();
   }
 
+  Future<UserModel> loginAsGuest() async {
+    final data = await _client.post(ApiEndpoints.guest) as Map;
+    final token = data['access_token'] as String;
+    await _storage.write(token);
+    return UserModel.fromJson(Map<String, dynamic>.from(data['user'] as Map));
+  }
+
+  Future<UserModel> loginWithSocialToken({
+    required String provider,
+    required String token,
+  }) async {
+    assert(provider == 'google' || provider == 'facebook');
+    final data = await _client.post(
+      '$ApiEndpoints.api/auth/$provider',
+      jsonBody: {'token': token},
+    ) as Map;
+    final accessToken = data['access_token'] as String;
+    await _storage.write(accessToken);
+    return UserModel.fromJson(Map<String, dynamic>.from(data['user'] as Map));
+  }
+
   Future<UserModel> fetchMe() async {
     final data = await _client.get(ApiEndpoints.me);
     return UserModel.fromJson(_cast(data));

@@ -66,6 +66,44 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  bool get isGuest => user?.username.startsWith('Guest') ?? false;
+
+  Future<bool> loginAsGuest() async {
+    loading = true;
+    error = null;
+    notifyListeners();
+    try {
+      user = await _repository.loginAsGuest();
+      return true;
+    } catch (e) {
+      error = e.toString();
+      return false;
+    } finally {
+      loading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> loginWithSocialToken({
+    required String provider,
+    required String token,
+  }) async {
+    loading = true;
+    error = null;
+    notifyListeners();
+    try {
+      user = await _repository.loginWithSocialToken(
+          provider: provider, token: token);
+      return true;
+    } catch (e) {
+      error = e.toString();
+      return false;
+    } finally {
+      loading = false;
+      notifyListeners();
+    }
+  }
+
   Future<void> logout() async {
     await _repository.logout();
     user = null;
@@ -74,6 +112,11 @@ class AuthProvider extends ChangeNotifier {
 
   void clearError() {
     error = null;
+    notifyListeners();
+  }
+
+  void setTransientError(String message) {
+    error = message;
     notifyListeners();
   }
 }

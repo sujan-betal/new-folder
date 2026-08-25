@@ -3,6 +3,7 @@ import random
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.orm.attributes import flag_modified
 
 from src.models.game_model import Game, MatchResult, Move
 from src.models.room_model import Room, RoomPlayer
@@ -67,6 +68,7 @@ async def start_game_service(db: AsyncSession, user: User, mode: str, room_code:
             players_result = await db.execute(
                 select(RoomPlayer)
                 .where(RoomPlayer.room_id == room.id, RoomPlayer.color.isnot(None))
+                .options(selectinload(RoomPlayer.user))
             )
             players = list(players_result.scalars().all())
 
@@ -76,7 +78,14 @@ async def start_game_service(db: AsyncSession, user: User, mode: str, room_code:
                 return {"error": True, "message": "Only the host can start the game", "status": 403}
 
             participants = [
-                {"color": p.color, "user_id": p.user_id, "is_bot": False} for p in players
+                {
+                    "color": p.color,
+                    "user_id": p.user_id,
+                    "is_bot": False,
+                    "username": p.user.username if p.user else f"Player {p.seat + 1}",
+                    "avatar": (p.user.avatar if p.user else "") or "\U0001F3B2",
+                }
+                for p in sorted(players, key=lambda x: x.seat)
             ]
             state = ludo_engine.initial_state(participants)
             game = Game(room_id=room.id, mode="online", state=state)
@@ -84,8 +93,20 @@ async def start_game_service(db: AsyncSession, user: User, mode: str, room_code:
         else:
             bot = await _get_or_create_bot(db)
             participants = [
-                {"color": "red", "user_id": user.id, "is_bot": False},
-                {"color": "blue", "user_id": bot.id, "is_bot": True},
+                {
+                    "color": "red",
+                    "user_id": user.id,
+                    "is_bot": False,
+                    "username": user.username,
+                    "avatar": user.avatar or "\U0001F3B2",
+                },
+                {
+                    "color": "blue",
+                    "user_id": bot.id,
+                    "is_bot": True,
+                    "username": "CPU",
+                    "avatar": "\U0001F916",
+                },
             ]
             state = ludo_engine.initial_state(participants)
             game = Game(mode="computer", state=state)
@@ -190,6 +211,8 @@ async def make_move_service(db: AsyncSession, user: User, game_id: int, token_in
         dice_used = game.dice_value
         result = ludo_engine.apply_move(game.state, color, token_index, dice_used)
         to_pos = game.state["tokens"][color][token_index]
+        # JSON columns are not tracked for in-place mutations.
+        flag_modified(game, "state")
 
         db.add(
             Move(
@@ -259,6 +282,7 @@ async def _play_bot_turns(db: AsyncSession, game: Game) -> Game:
         from_pos = game.state["tokens"][color][token_index]
         result = ludo_engine.apply_move(game.state, color, token_index, dice)
         to_pos = game.state["tokens"][color][token_index]
+        flag_modified(game, "state")
 
         db.add(
             Move(
@@ -291,6 +315,9 @@ async def _play_bot_turns(db: AsyncSession, game: Game) -> Game:
 async def _finish_game(db: AsyncSession, game: Game, winner_color: str) -> None:
     from datetime import datetime, timezone
 
+    from src.config.app_config import APP_CONFIG
+
+    rewards_cfg = APP_CONFIG["rewards"]
     game.status = "finished"
     game.finished_at = datetime.now(timezone.utc)
     game.dice_value = None
@@ -316,14 +343,16 @@ async def _finish_game(db: AsyncSession, game: Game, winner_color: str) -> None:
 
     for p in participants:
         won = placement_map[p["color"]] == 1
-        coins = 100 if won else 25
-        xp = 50 if won else 15
+        coins = (
+            rewards_cfg["win_coins"] if won else rewards_cfg["participation_coins"]
+        )
+        xp = rewards_cfg["win_xp"] if won else rewards_cfg["participation_xp"]
 
         if not p.get("is_bot"):
             target_result = await db.execute(select(User).where(User.id == p["user_id"]))
             target = target_result.scalar_one_or_none()
             if target is not None:
-                add_rewards(db, target, coins, xp, won)
+                await add_rewards(db, target, coins, xp, won)
 
         db.add(
             MatchResult(

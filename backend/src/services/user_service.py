@@ -21,9 +21,16 @@ async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
 async def update_profile_service(db: AsyncSession, user: User, avatar: str | None) -> dict:
     try:
         if avatar is not None:
+            from src.services.shop_service import is_avatar_unlocked
+
+            if not await is_avatar_unlocked(db, user, avatar):
+                return {
+                    "error": True,
+                    "message": "That avatar is locked - buy it from the shop first",
+                }
             user.avatar = avatar
-            await db.commit()
-            await db.refresh(user)
+        await db.commit()
+        await db.refresh(user)
         return {"error": False, "user": user}
     except Exception as e:
         await db.rollback()

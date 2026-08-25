@@ -16,8 +16,10 @@ from src.models.game_model import Game, MatchResult, Move  # noqa: F401
 from src.routes.game_route import router as game_router
 from src.models.room_model import Room, RoomPlayer  # noqa: F401
 from src.routes.room_route import router as room_router
-from src.models.user_model import User  # noqa: F401
+from src.models.user_model import Purchase, User  # noqa: F401
 from src.routes.user_route import router as user_router
+from src.routes.shop_route import router as shop_router
+from src.routes.config_route import router as config_router
 
 
 @asynccontextmanager
@@ -39,7 +41,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    for router in (auth_router, user_router, room_router, game_router):
+    for router in (auth_router, user_router, room_router, game_router, shop_router, config_router):
         application.include_router(router, prefix=settings.API_V1_PREFIX)
 
     @application.get(f"{settings.API_V1_PREFIX}/health", tags=["health"])

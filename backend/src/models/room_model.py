@@ -35,3 +35,4 @@ class RoomPlayer(Base):
     joined_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
 
     room = relationship("Room", back_populates="players")
+    user = relationship("User")

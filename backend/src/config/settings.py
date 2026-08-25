@@ -20,5 +20,10 @@ class Settings:
 
     CORS_ORIGINS: list[str] = os.getenv("CORS_ORIGINS", "*").split(",")
 
+    # Social logins (optional): set these to enforce app-audience checks.
+    GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
+    FACEBOOK_APP_ID: str = os.getenv("FACEBOOK_APP_ID", "")
+    FACEBOOK_APP_SECRET: str = os.getenv("FACEBOOK_APP_SECRET", "")
+
 
 settings = Settings()
