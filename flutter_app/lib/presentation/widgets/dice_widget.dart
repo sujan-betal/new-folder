@@ -34,24 +34,32 @@ class _DiceWidgetState extends State<DiceWidget>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 640),
+    duration: const Duration(milliseconds: 780),
   );
   int _displayValue = 1;
   bool _wasRolling = false;
+  double _spinDir = 1;
+  int _seed = 3;
 
   @override
   void initState() {
     super.initState();
     _displayValue = widget.value <= 0 ? 1 : widget.value;
     _wasRolling = widget.rolling;
-    if (_wasRolling) _controller.forward(from: 0);
+    if (_wasRolling) _beginRoll();
+  }
+
+  void _beginRoll() {
+    _spinDir = (_seed.isEven ? 1 : -1).toDouble();
+    _controller.forward(from: 0);
   }
 
   @override
   void didUpdateWidget(covariant DiceWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.rolling && !_wasRolling) {
-      _controller.forward(from: 0);
+      _seed = (_displayValue * 7 + widget.size.round()) % 13 + 2;
+      _beginRoll();
     }
     _wasRolling = widget.rolling;
     if (!widget.rolling && widget.value > 0 && !_controller.isAnimating) {
@@ -82,11 +90,14 @@ class _DiceWidgetState extends State<DiceWidget>
           double scale = 1;
           double lift = 0;
           if (rollingNow) {
-            // Tumble through faces, slow down, land on the real value.
             value = _tumbleFace(t);
-            angle = math.sin(t * math.pi * 3.2) * 0.55 * (1 - t * 0.75);
-            scale = 1 + math.sin(t * math.pi) * 0.14;
-            lift = math.sin(t * math.pi) * widget.size * 0.16;
+            // Continuous eased spin - fast at first, gliding to a stop.
+            final easeOut = Curves.easeOutQuart.transform(t);
+            angle = (1 - easeOut) * math.pi * 4 * _spinDir;
+            // Pop up, then settle with a soft landing bounce.
+            scale =
+                1 + math.sin(math.pi * t) * 0.15 * (1 - t * 0.65);
+            lift = math.sin(math.pi * t) * widget.size * 0.18;
           }
 
           final cube = _Cube(
@@ -103,7 +114,12 @@ class _DiceWidgetState extends State<DiceWidget>
               width: widget.tray ? widget.size * 1.62 : widget.size * 1.25,
               height: widget.tray ? widget.size * 1.62 : widget.size * 1.25,
               child: Center(
-                child: widget.tray ? _Tray(color: widget.color, child: Transform.scale(scale: scale, child: cube)) : Transform.scale(scale: scale, child: cube),
+                child: widget.tray
+                    ? _Tray(
+                        color: widget.color,
+                        child:
+                            Transform.scale(scale: scale, child: cube))
+                    : Transform.scale(scale: scale, child: cube),
               ),
             ),
           );
@@ -113,10 +129,11 @@ class _DiceWidgetState extends State<DiceWidget>
   }
 
   int _tumbleFace(double t) {
-    // Deterministic scramble that settles on the final value near t=1.
-    if (t > 0.82) return _targetOrDisplay();
-    final step = (t * 9).floor();
-    return 1 + (step * 7 + _displayValue * 3) % 6;
+    // Faces flip rapidly early on and slow down as the die settles.
+    if (t > 0.86) return _targetOrDisplay();
+    final phase =
+        (Curves.easeOutQuad.transform(t) * 9).floor();
+    return 1 + (phase * 5 + _seed) % 6;
   }
 
   int _targetOrDisplay() => widget.value > 0 ? widget.value : _displayValue;

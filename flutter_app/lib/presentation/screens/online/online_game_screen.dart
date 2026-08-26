@@ -10,8 +10,7 @@ import '../../../logic/providers/auth_provider.dart';
 import '../../../logic/providers/game_online_provider.dart';
 import '../../widgets/board_painter.dart';
 import '../../widgets/board_view.dart';
-import '../../widgets/dice_glow.dart';
-import '../../widgets/dice_widget.dart';
+import '../../widgets/player_dice_panel.dart';
 import '../../widgets/sound_toggle.dart';
 import '../game/local_game_screen.dart' show PrimaryGameButton;
 
@@ -147,59 +146,45 @@ class _OnlineGameScreenState extends State<OnlineGameScreen> {
     return 'red';
   }
 
-  Widget _participantStrip(GameOnlineProvider provider) {
-    final colors = provider.activeColors;
-    if (colors.isEmpty) return const SizedBox.shrink();
+  /// One board-edge slot; renders that colour's own dice panel if seated.
+  Widget _cornerSlot(GameOnlineProvider provider, String color,
+      {required bool alignRight}) {
+    final game = provider.game;
+    if (game == null || !provider.activeColors.contains(color)) {
+      return const SizedBox.expand();
+    }
+    final active = game.currentTurn == color;
+    final waiting = game.diceValue == null;
+    return Align(
+      alignment:
+          alignRight ? Alignment.centerRight : Alignment.centerLeft,
+      child: PlayerDicePanel(
+        colorName: color,
+        name: provider.nameOf(color),
+        avatar: provider.avatarOf(color),
+        tokensHome: provider.tokensHomeOf(color),
+        active: active,
+        glowing: active && waiting && !provider.busy,
+        diceValue: game.diceValue ?? 1,
+        rolling: active && waiting && provider.busy,
+        canRoll: provider.canRoll && color == provider.myColor,
+        onRollTap: provider.rollDice,
+      ),
+    );
+  }
+
+  Widget _cornerRow(GameOnlineProvider provider,
+      {required String left, required String right}) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 0, 10, 6),
-      child: Row(
-        children: [
-          for (var i = 0; i < colors.length; i++)
-            Expanded(
-              child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 3),
-                padding:
-                    const EdgeInsets.symmetric(vertical: 7, horizontal: 5),
-                decoration: BoxDecoration(
-                  color: provider.game?.currentTurn == colors[i]
-                      ? BoardPainter.colorOf(colors[i]).withValues(alpha: 0.35)
-                      : Colors.black26,
-                  borderRadius: BorderRadius.circular(13),
-                  border: Border.all(
-                    color: provider.game?.currentTurn == colors[i]
-                        ? AppColors.gold
-                        : Colors.white24,
-                    width: provider.game?.currentTurn == colors[i] ? 1.8 : 1,
-                  ),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircleAvatar(
-                      radius: 12,
-                      backgroundColor: BoardPainter.colorOf(colors[i]),
-                      child: Text(provider.avatarOf(colors[i]),
-                          style: const TextStyle(fontSize: 11)),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      provider.nameOf(colors[i]),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 9.5, fontWeight: FontWeight.w700),
-                    ),
-                    Text(
-                      '\u{1F3E0} ${provider.tokensHomeOf(colors[i])}/4',
-                      style: TextStyle(
-                          fontSize: 9,
-                          color: Colors.white.withValues(alpha: 0.6)),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-        ],
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      child: SizedBox(
+        height: 78,
+        child: Row(
+          children: [
+            Expanded(child: _cornerSlot(provider, left, alignRight: false)),
+            Expanded(child: _cornerSlot(provider, right, alignRight: true)),
+          ],
+        ),
       ),
     );
   }
@@ -211,9 +196,6 @@ class _OnlineGameScreenState extends State<OnlineGameScreen> {
       child: Consumer<GameOnlineProvider>(
         builder: (context, provider, _) {
           final game = provider.game;
-          final turnColor = game == null
-              ? Colors.white
-              : BoardPainter.colorOf(game.currentTurn);
 
           return Scaffold(
             body: Container(
@@ -297,16 +279,19 @@ class _OnlineGameScreenState extends State<OnlineGameScreen> {
                             ),
                           ),
                           Expanded(
-                            flex: 6,
+                            flex: 7,
                             child: Column(
                               children: [
-                                _participantStrip(provider),
+                                // Ludo King layout: each player's own dice
+                                // beside their base corner of the board.
+                                _cornerRow(provider,
+                                    left: 'red', right: 'green'),
                                 Expanded(
                                   child: Center(
                                     child: AspectRatio(
                                       aspectRatio: 1,
                                       child: Padding(
-                                        padding: const EdgeInsets.all(8),
+                                        padding: const EdgeInsets.all(4),
                                         child: BoardView(
                                           tokens: game.tokens,
                                           currentColor: game.currentTurn,
@@ -319,32 +304,8 @@ class _OnlineGameScreenState extends State<OnlineGameScreen> {
                                     ),
                                   ),
                                 ),
-                              ],
-                            ),
-                          ),
-                          Padding(
-                            padding:
-                                const EdgeInsets.fromLTRB(18, 6, 18, 14),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                // Ludo King style: glowing tray dice only,
-                                // tap it to roll - no button, no turn text.
-                                DiceGlow(
-                                  active: game.isActive &&
-                                      game.diceValue == null &&
-                                      !provider.busy,
-                                  color: turnColor,
-                                  child: DiceWidget(
-                                    value: game.diceValue ?? 1,
-                                    rolling: provider.busy &&
-                                        game.diceValue == null,
-                                    color: turnColor,
-                                    size: 72,
-                                    enabled: provider.canRoll,
-                                    onTap: provider.rollDice,
-                                  ),
-                                ),
+                                _cornerRow(provider,
+                                    left: 'blue', right: 'yellow'),
                               ],
                             ),
                           ),

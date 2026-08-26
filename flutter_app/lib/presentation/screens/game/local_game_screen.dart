@@ -8,8 +8,7 @@ import '../../../game/game_controller.dart';
 import '../../../game/ludo_engine.dart';
 import '../../widgets/board_view.dart';
 import '../../widgets/board_painter.dart';
-import '../../widgets/dice_glow.dart';
-import '../../widgets/dice_widget.dart';
+import '../../widgets/player_dice_panel.dart';
 import '../../widgets/sound_toggle.dart';
 
 class LocalGameScreen extends StatefulWidget {
@@ -195,39 +194,47 @@ class _LocalGameScreenState extends State<LocalGameScreen>
               return Column(
                 children: [
                   _header(context),
-                  Expanded(child: _playerStrip()),
                   Expanded(
-                    flex: 6,
-                    child: Center(
-                      child: AspectRatio(
-                        aspectRatio: 1,
-                        child: Padding(
-                          padding: const EdgeInsets.all(8),
-                          child: AnimatedBuilder(
-                            animation: _shake,
-                            builder: (context, child) {
-                              final t = _shake.value;
-                              final dx =
-                                  math.sin(t * math.pi * 6) * 7 * (1 - t);
-                              return Transform.translate(
-                                offset: Offset(dx, 0),
-                                child: child,
-                              );
-                            },
-                            child: BoardView(
-                              tokens: controller.tokens,
-                              currentColor: controller.currentColor,
-                              movable: controller.movable,
-                              boardFx: controller.boardFx,
-                              onTokenTap: (color, index) =>
-                                  controller.moveToken(index),
+                    flex: 7,
+                    child: Column(
+                      children: [
+                        // Ludo King layout: every player's own dice sits
+                        // beside their base corner of the board.
+                        _cornerRow(left: 'red', right: 'green'),
+                        Expanded(
+                          child: Center(
+                            child: AspectRatio(
+                              aspectRatio: 1,
+                              child: Padding(
+                                padding: const EdgeInsets.all(4),
+                                child: AnimatedBuilder(
+                                  animation: _shake,
+                                  builder: (context, child) {
+                                    final t = _shake.value;
+                                    final dx =
+                                        math.sin(t * math.pi * 6) * 7 * (1 - t);
+                                    return Transform.translate(
+                                      offset: Offset(dx, 0),
+                                      child: child,
+                                    );
+                                  },
+                                  child: BoardView(
+                                    tokens: controller.tokens,
+                                    currentColor: controller.currentColor,
+                                    movable: controller.movable,
+                                    boardFx: controller.boardFx,
+                                    onTokenTap: (color, index) =>
+                                        controller.moveToken(index),
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                         ),
-                      ),
+                        _cornerRow(left: 'blue', right: 'yellow'),
+                      ],
                     ),
                   ),
-                  _diceBar(),
                 ],
               );
             },
@@ -293,146 +300,49 @@ class _LocalGameScreenState extends State<LocalGameScreen>
     );
   }
 
-  Widget _playerStrip() {
+  Participant? _participantOf(String color) {
+    for (final p in _controller.participants) {
+      if (p.color == color) return p;
+    }
+    return null;
+  }
+
+  /// One board-edge slot; renders that colour's own dice panel if seated.
+  Widget _cornerSlot(String color, {required bool alignRight}) {
     final controller = _controller;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      child: Row(
-        children: [
-          for (var i = 0; i < controller.participants.length; i++)
-            Expanded(
-              child: _PlayerCard(
-                participant: controller.participants[i],
-                active: controller.currentColor ==
-                    controller.participants[i].color,
-                tokensHome:
-                    LudoEngine.tokensHome(controller.tokens[controller.participants[i].color]!),
-              ),
-            ),
-        ],
+    final p = _participantOf(color);
+    if (p == null) return const SizedBox.expand();
+    return Align(
+      alignment:
+          alignRight ? Alignment.centerRight : Alignment.centerLeft,
+      child: PlayerDicePanel(
+        colorName: p.color,
+        name: p.name,
+        avatar: p.avatar,
+        tokensHome: LudoEngine.tokensHome(controller.tokens[p.color]!),
+        active: controller.currentColor == p.color,
+        glowing: controller.currentColor == p.color &&
+            controller.phase == GamePhase.awaitingRoll,
+        diceValue: controller.diceValue ?? 1,
+        rolling: controller.currentColor == p.color &&
+            controller.phase == GamePhase.rolling,
+        canRoll: controller.canRoll,
+        onRollTap: controller.roll,
       ),
     );
   }
 
-  Widget _diceBar() {
-    final controller = _controller;
-    final rolling = controller.phase == GamePhase.rolling;
-    final color = BoardPainter.colorOf(controller.currentColor);
-    final waiting = controller.phase == GamePhase.awaitingRoll;
-
+  Widget _cornerRow({required String left, required String right}) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 8, 18, 14),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          // Ludo King style: no turn text, no button - just tap the
-          // glowing tray dice on your turn.
-          DiceGlow(
-            active: waiting,
-            color: color,
-            child: DiceWidget(
-              value: controller.diceValue ?? 1,
-              rolling: rolling,
-              color: color,
-              size: 72,
-              enabled: controller.canRoll,
-              onTap: controller.roll,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PlayerCard extends StatelessWidget {
-  const _PlayerCard({
-    required this.participant,
-    required this.active,
-    required this.tokensHome,
-  });
-
-  final Participant participant;
-  final bool active;
-  final int tokensHome;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = BoardPainter.colorOf(participant.color);
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 250),
-      margin: const EdgeInsets.symmetric(horizontal: 4),
-      padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 6),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            color.withValues(alpha: active ? 0.85 : 0.45),
-            Color.lerp(color, Colors.black, 0.35)!
-                .withValues(alpha: active ? 0.9 : 0.55),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      child: SizedBox(
+        height: 78,
+        child: Row(
+          children: [
+            Expanded(child: _cornerSlot(left, alignRight: false)),
+            Expanded(child: _cornerSlot(right, alignRight: true)),
           ],
         ),
-        borderRadius: BorderRadius.circular(13),
-        border: Border.all(
-          color: active ? AppColors.gold : Colors.white24,
-          width: active ? 2.2 : 1,
-        ),
-        boxShadow: active
-            ? [
-                BoxShadow(
-                  color: AppColors.gold.withValues(alpha: 0.55),
-                  blurRadius: 12,
-                  spreadRadius: 1,
-                ),
-              ]
-            : [],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(2),
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white,
-            ),
-            child: CircleAvatar(
-              radius: 14,
-              backgroundColor: color,
-              child: Text(participant.avatar,
-                  style: const TextStyle(fontSize: 13)),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            participant.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w900,
-                shadows: [Shadow(blurRadius: 3, color: Colors.black54)]),
-          ),
-          const SizedBox(height: 3),
-          // Ludo King style: 4 little house pips fill as tokens finish.
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(4, (i) {
-              final done = i < tokensHome;
-              return Container(
-                width: 9,
-                height: 9,
-                margin: const EdgeInsets.symmetric(horizontal: 1.5),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: done ? Colors.white : Colors.white24,
-                  border: Border.all(color: Colors.white70, width: 0.8),
-                ),
-              );
-            }),
-          ),
-        ],
       ),
     );
   }
