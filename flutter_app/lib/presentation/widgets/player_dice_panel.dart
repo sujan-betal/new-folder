@@ -20,7 +20,7 @@ class PlayerDicePanel extends StatelessWidget {
     required this.rolling,
     required this.canRoll,
     this.onRollTap,
-    this.diceSize = 46,
+    this.diceSize = 52,
   });
 
   final String colorName;

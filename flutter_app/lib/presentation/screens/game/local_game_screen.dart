@@ -336,7 +336,7 @@ class _LocalGameScreenState extends State<LocalGameScreen>
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       child: SizedBox(
-        height: 78,
+        height: 90,
         child: Row(
           children: [
             Expanded(child: _cornerSlot(left, alignRight: false)),

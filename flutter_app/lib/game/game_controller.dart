@@ -75,7 +75,8 @@ class GameController extends ChangeNotifier {
     SoundManager.instance.diceRoll();
     notifyListeners();
 
-    await Future<void>.delayed(const Duration(milliseconds: 650));
+    // Wait for dice animation to settle (1000ms total animation)
+    await Future<void>.delayed(const Duration(milliseconds: 850));
     if (!_alive(gen)) return;
 
     final value = _random.nextInt(6) + 1;
@@ -152,7 +153,7 @@ class GameController extends ChangeNotifier {
       tokens[color]![tokenIndex] = pos;
       SoundManager.instance.move();
       notifyListeners();
-      await Future<void>.delayed(const Duration(milliseconds: 130));
+      await Future<void>.delayed(const Duration(milliseconds: 85));
       if (!_alive(gen)) return;
     }
 

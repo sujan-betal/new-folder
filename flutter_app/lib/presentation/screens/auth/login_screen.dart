@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../core/network/facebook_sign_in_service.dart';
 import '../../../core/network/google_sign_in_service.dart';
 import '../../../injection_container.dart' as di;
 import '../../../logic/providers/auth_provider.dart';
@@ -20,6 +21,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _identifierController = TextEditingController();
   final _passwordController = TextEditingController();
   final GoogleSignInService _googleService = di.sl<GoogleSignInService>();
+  final FacebookSignInService _facebookService = di.sl<FacebookSignInService>();
   String? _busyWith;
 
   @override
@@ -122,12 +124,53 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _facebook() async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Add the flutter_facebook_auth plugin and pass its token to '
-          'loginWithSocialToken(provider: facebook) - backend is ready.',
+    final auth = context.read<AuthProvider>();
+    await _run('facebook', () async {
+      try {
+        final accessToken = await _facebookService.getAccessToken();
+        return await auth.loginWithSocialToken(
+            provider: 'facebook', token: accessToken);
+      } on FacebookAuthException catch (e) {
+        auth.setTransientError(e.toString());
+        if (mounted) _showFacebookSetupHint(e.toString());
+        return false;
+      }
+    });
+  }
+
+  void _showFacebookSetupHint(String reason) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.navyLight,
+        title: const Text('Facebook Sign-In'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                  'Facebook sign-in needs your Facebook App ID '
+                  '(free from developers.facebook.com):'),
+              const SizedBox(height: 10),
+              const Text('1. developers.facebook.com > My Apps > Create App'),
+              const Text('2. Add Facebook Login product'),
+              const Text('3. Set up OAuth redirect URI'),
+              const Text('4. Add your app ID to the Android/iOS config'),
+              const SizedBox(height: 12),
+              Text('Details: $reason',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.white.withValues(alpha: 0.5))),
+            ],
+          ),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Got it'),
+          ),
+        ],
       ),
     );
   }
@@ -266,7 +309,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             label: 'Facebook',
                             icon: Icons.facebook,
                             iconColor: const Color(0xFF1877F2),
-                            busy: false,
+                            busy: _busyWith == 'facebook',
                             enabled: !busy,
                             onTap: _facebook,
                           ),

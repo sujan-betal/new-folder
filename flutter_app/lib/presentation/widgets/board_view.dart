@@ -174,41 +174,26 @@ class _BoardViewState extends State<BoardView> {
     final color = BoardPainter.colorOf(entry.color);
     final isMine = entry.color == widget.currentColor;
     final canMove = isMine && widget.movable.contains(entry.tokenIndex);
-    final size = cell * 0.74;
+    final size = cell * 0.88;
 
     final token = _PawnToken(size: size, color: color, glowing: canMove);
 
-    Widget result = AnimatedPositioned(
+    return AnimatedPositioned(
       key: ValueKey('${entry.color}_${entry.tokenIndex}'),
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOutCubic,
+      duration: const Duration(milliseconds: 80),
+      curve: Curves.easeOutCubic,
       left: entry.center.dx - size / 2,
       top: entry.center.dy - size / 2,
-      child: canMove
-          ? _PulsingBox(cell: cell, child: token)
-          : token,
+      child: canMove && widget.onTokenTap != null
+          ? GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: () => widget.onTokenTap!(entry.color, entry.tokenIndex),
+              child: _PulsingBox(cell: cell, child: token),
+            )
+          : canMove
+              ? _PulsingBox(cell: cell, child: token)
+              : token,
     );
-
-    if (canMove && widget.onTokenTap != null) {
-      result = GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => widget.onTokenTap!(entry.color, entry.tokenIndex),
-        child: AnimatedPositioned(
-          key: ValueKey('hit_${entry.color}_${entry.tokenIndex}'),
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOutCubic,
-          left: entry.center.dx - cell * 0.75,
-          top: entry.center.dy - cell * 0.75,
-          child: SizedBox(
-            width: cell * 1.5,
-            height: cell * 1.5,
-            child: Center(child: _PulsingBox(cell: cell, child: token)),
-          ),
-        ),
-      );
-    }
-
-    return result;
   }
 }
 
@@ -232,82 +217,101 @@ class _PawnToken extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // Drop shadow.
+          // Drop shadow ellipse.
           Positioned(
             bottom: 0,
             child: Container(
-              width: size * 0.86,
-              height: size * 0.3,
+              width: size * 0.88,
+              height: size * 0.28,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.black.withValues(alpha: 0.35),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.3),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
+                gradient: RadialGradient(
+                  colors: [
+                    Colors.black.withValues(alpha: 0.35),
+                    Colors.black.withValues(alpha: 0.0),
+                  ],
+                ),
               ),
             ),
           ),
-          // Body.
+          // Outer colored disc - makes the token more visible on the board.
           Container(
-            width: size * 0.82,
-            height: size * 0.82,
+            width: size * 0.90,
+            height: size * 0.90,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                center: const Alignment(-0.3, -0.35),
+                radius: 1.15,
+                colors: [
+                  Color.lerp(color, Colors.white, 0.45)!,
+                  color,
+                  Color.lerp(color, Colors.black, 0.40)!,
+                ],
+                stops: const [0.0, 0.5, 1.0],
+              ),
+              border: Border.all(
+                color: glowing ? AppColors.gold : Colors.white,
+                width: glowing ? 3.0 : 2.2,
+              ),
+              boxShadow: glowing
+                  ? [
+                      BoxShadow(
+                        color: AppColors.gold.withValues(alpha: 0.9),
+                        blurRadius: 14,
+                        spreadRadius: 3,
+                      ),
+                    ]
+                  : [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.3),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+            ),
+          ),
+          // White collar ring.
+          Container(
+            width: size * 0.48,
+            height: size * 0.48,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white.withValues(alpha: 0.95),
+              border: Border.all(
+                color: Color.lerp(color, Colors.black, 0.20)!,
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.12),
+                  blurRadius: 2,
+                  offset: const Offset(0, 1),
+                ),
+              ],
+            ),
+          ),
+          // Head sphere.
+          Container(
+            width: size * 0.30,
+            height: size * 0.30,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               gradient: RadialGradient(
                 center: const Alignment(-0.35, -0.35),
                 radius: 1.1,
                 colors: [
-                  Color.lerp(color, Colors.white, 0.55)!,
-                  color,
-                  Color.lerp(color, Colors.black, 0.35)!,
-                ],
-                stops: const [0.0, 0.55, 1.0],
-              ),
-              border: Border.all(
-                color: glowing ? AppColors.gold : Colors.white,
-                width: glowing ? 2.6 : 1.8,
-              ),
-              boxShadow: glowing
-                  ? [
-                      BoxShadow(
-                        color: AppColors.gold.withValues(alpha: 0.85),
-                        blurRadius: 12,
-                        spreadRadius: 2,
-                      ),
-                    ]
-                  : [],
-            ),
-          ),
-          // White collar ring.
-          Container(
-            width: size * 0.44,
-            height: size * 0.44,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white.withValues(alpha: 0.92),
-              border: Border.all(
-                color: Color.lerp(color, Colors.black, 0.25)!,
-                width: 1.2,
-              ),
-            ),
-          ),
-          // Head sphere.
-          Container(
-            width: size * 0.26,
-            height: size * 0.26,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(
-                center: const Alignment(-0.3, -0.3),
-                colors: [
-                  Color.lerp(color, Colors.white, 0.65)!,
+                  Color.lerp(color, Colors.white, 0.60)!,
                   color,
                 ],
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.white.withValues(alpha: 0.3),
+                  blurRadius: 2,
+                  offset: const Offset(-0.5, -0.5),
+                ),
+              ],
             ),
           ),
         ],
@@ -331,9 +335,9 @@ class _PulsingBoxState extends State<_PulsingBox>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 550),
-    lowerBound: 0.94,
-    upperBound: 1.08,
+    duration: const Duration(milliseconds: 480),
+    lowerBound: 0.92,
+    upperBound: 1.12,
   )..repeat(reverse: true);
 
   @override

@@ -2,6 +2,7 @@ import 'package:get_it/get_it.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/network/api_client.dart';
+import 'core/network/facebook_sign_in_service.dart';
 import 'core/network/google_sign_in_service.dart';
 import 'core/network/token_storage.dart';
 import 'core/sound/sound_manager.dart';
@@ -28,6 +29,7 @@ Future<void> init() async {
   sl.registerLazySingleton<ProfileRepository>(() => ProfileRepository(sl()));
   sl.registerLazySingleton<ConfigRepository>(() => ConfigRepository(sl()));
   sl.registerLazySingleton<GoogleSignInService>(() => GoogleSignInService());
+  sl.registerLazySingleton<FacebookSignInService>(() => FacebookSignInService());
   sl.registerLazySingleton<AuthProvider>(() => AuthProvider(sl())..bootstrap());
   sl.registerFactory<GameOnlineProvider>(
     () => GameOnlineProvider(sl(), sl()),
