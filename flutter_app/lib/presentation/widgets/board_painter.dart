@@ -11,6 +11,10 @@ class BoardPainter extends CustomPainter {
   /// Color of the player whose turn it is - their base gets a glow.
   final String? activeColor;
 
+  // Ludo King palette: crisp dark outlines on a clean white track.
+  static const _line = Color(0xFF546E7A);
+  static const _trackFill = Colors.white;
+
   static Color colorOf(String name) {
     switch (name) {
       case 'red':
@@ -23,6 +27,8 @@ class BoardPainter extends CustomPainter {
         return AppColors.blue;
     }
   }
+
+  static Color darkOf(Color c) => Color.lerp(c, Colors.black, 0.32)!;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -63,7 +69,16 @@ class BoardPainter extends CustomPainter {
         RRect.fromRectAndRadius(baseRect, Radius.circular(cell * 0.35)),
         Paint()..color = color,
       );
-      // Subtle top-light bevel like Ludo King's raised bases.
+      // Dark outer ring like Ludo King's raised quadrants.
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(baseRect.deflate(cell * 0.1),
+            Radius.circular(cell * 0.3)),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = cell * 0.22
+          ..color = darkOf(color),
+      );
+      // Subtle top-light bevel.
       canvas.drawRect(
         baseRect,
         Paint()
@@ -88,6 +103,14 @@ class BoardPainter extends CustomPainter {
         RRect.fromRectAndRadius(inner, Radius.circular(cell * 0.45)),
         Paint()..color = Colors.white,
       );
+      // Thick colored ring around the white panel.
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(inner, Radius.circular(cell * 0.45)),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = cell * 0.3
+          ..color = color,
+      );
 
       const slots = [
         Offset(2, 2),
@@ -100,29 +123,31 @@ class BoardPainter extends CustomPainter {
           (origin.dx + s.dx) * cell,
           (origin.dy + s.dy) * cell,
         );
+        // Solid token cradle with a white gap ring, exactly like LK.
+        canvas.drawCircle(center, cell * 0.62, Paint()..color = Colors.white);
         canvas.drawCircle(
           center,
-          cell * 0.55,
-          Paint()..color = color.withValues(alpha: 0.16),
+          cell * 0.5,
+          Paint()..color = color.withValues(alpha: 0.9),
         );
         canvas.drawCircle(
           center,
-          cell * 0.55,
+          cell * 0.5,
           Paint()
             ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.5
-            ..color = color.withValues(alpha: 0.5),
+            ..strokeWidth = cell * 0.08
+            ..color = darkOf(color),
         );
       }
     });
   }
 
   void _drawTrack(Canvas canvas, double cell) {
-    final fill = Paint()..color = Colors.white;
+    final fill = Paint()..color = _trackFill;
     final stroke = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1
-      ..color = Colors.grey.shade400;
+      ..strokeWidth = cell * 0.055
+      ..color = _line;
 
     for (var i = 0; i < BoardGeometry.ringCells.length; i++) {
       final rc = BoardGeometry.ringCells[i];
@@ -138,7 +163,7 @@ class BoardPainter extends CustomPainter {
         _drawArrow(canvas, rc[0], rc[1], startEntry.first, cell);
       } else if (BoardGeometry.safeSquares.contains(i)) {
         final center = Offset((rc[1] + 0.5) * cell, (rc[0] + 0.5) * cell);
-        _drawStar(canvas, center, cell * 0.34);
+        _drawStar(canvas, center, cell * 0.36);
       }
 
       canvas.drawRect(_rect(rc[0], rc[1], cell), stroke);
@@ -192,20 +217,27 @@ class BoardPainter extends CustomPainter {
       }
     }
     path.close();
-    canvas.drawPath(path, Paint()..color = AppColors.gold.withValues(alpha: 0.75));
+    canvas.drawPath(path, Paint()..color = AppColors.gold);
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = radius * 0.14
+        ..color = darkOf(AppColors.goldDark),
+    );
   }
 
   void _drawHomeColumns(Canvas canvas, double cell) {
     BoardGeometry.laneCells.forEach((name, cells) {
       for (final rc in cells) {
         canvas.drawRect(_rect(rc[0], rc[1], cell),
-            Paint()..color = colorOf(name).withValues(alpha: 0.78));
+            Paint()..color = colorOf(name).withValues(alpha: 0.92));
         canvas.drawRect(
           _rect(rc[0], rc[1], cell),
           Paint()
             ..style = PaintingStyle.stroke
-            ..strokeWidth = 1
-            ..color = Colors.grey.shade400,
+            ..strokeWidth = cell * 0.055
+            ..color = _line,
         );
       }
     });
@@ -239,14 +271,38 @@ class BoardPainter extends CustomPainter {
     triangles.forEach((name, points) {
       final path = Path()..addPolygon(points, true);
       canvas.drawPath(path, Paint()..color = colorOf(name));
-      canvas.drawPath(
-        path,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.5
-          ..color = Colors.white,
-      );
     });
+
+    // Bold white cross separating the four triangles.
+    final cross = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = cell * 0.16
+      ..color = Colors.white
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(
+        Offset(6 * cell, 6 * cell), Offset(9 * cell, 9 * cell), cross);
+    canvas.drawLine(
+        Offset(9 * cell, 6 * cell), Offset(6 * cell, 9 * cell), cross);
+
+    // Center medallion with a star, like the Ludo King home.
+    final medallionR = cell * 1.05;
+    canvas.drawCircle(
+      center,
+      medallionR,
+      Paint()
+        ..color = Colors.white
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, cell * 0.06),
+    );
+    canvas.drawCircle(center, medallionR * 0.86, Paint()..color = Colors.white);
+    canvas.drawCircle(
+      center,
+      medallionR * 0.86,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = cell * 0.09
+        ..color = AppColors.gold,
+    );
+    _drawStar(canvas, center, medallionR * 0.52);
   }
 
   @override

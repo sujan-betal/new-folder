@@ -8,6 +8,7 @@ import '../../../game/game_controller.dart';
 import '../../../game/ludo_engine.dart';
 import '../../widgets/board_view.dart';
 import '../../widgets/board_painter.dart';
+import '../../widgets/dice_glow.dart';
 import '../../widgets/dice_widget.dart';
 import '../../widgets/sound_toggle.dart';
 
@@ -324,26 +325,19 @@ class _LocalGameScreenState extends State<LocalGameScreen>
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Ludo King style: no turn text - the active dice just glows.
-          _DiceGlow(
+          // Ludo King style: no turn text, no button - just tap the
+          // glowing tray dice on your turn.
+          DiceGlow(
             active: waiting,
             color: color,
             child: DiceWidget(
               value: controller.diceValue ?? 1,
               rolling: rolling,
-              // Ludo King dice: white face, black pips, player-colored rim.
-              color: Colors.black87,
-              size: 68,
+              color: color,
+              size: 72,
               enabled: controller.canRoll,
               onTap: controller.roll,
             ),
-          ),
-          const SizedBox(width: 22),
-          PrimaryGameButton(
-            label: controller.canRoll ? 'ROLL DICE' : '...',
-            width: 140,
-            enabled: controller.canRoll,
-            onTap: controller.roll,
           ),
         ],
       ),
@@ -351,84 +345,9 @@ class _LocalGameScreenState extends State<LocalGameScreen>
   }
 }
 
-/// Ludo King style halo: whoever's turn it is, their dice pulses.
-/// Works for CPU turns too - no "thinking" text needed.
-class _DiceGlow extends StatefulWidget {
-  const _DiceGlow({
-    required this.active,
-    required this.color,
-    required this.child,
-  });
-
-  final bool active;
-  final Color color;
-  final Widget child;
-
-  @override
-  State<_DiceGlow> createState() => _DiceGlowState();
-}
-
-class _DiceGlowState extends State<_DiceGlow>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 620),
-    lowerBound: 0.35,
-    upperBound: 1.0,
-  );
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.active) _controller.repeat(reverse: true);
-  }
-
-  @override
-  void didUpdateWidget(covariant _DiceGlow oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.active && !_controller.isAnimating) {
-      _controller.repeat(reverse: true);
-    } else if (!widget.active && _controller.isAnimating) {
-      _controller.stop();
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        final glow = widget.active ? _controller.value : 0.0;
-        return Transform.scale(
-          scale: 1 + glow * 0.07,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: widget.color.withValues(alpha: 0.75 * glow),
-                  blurRadius: 26 * glow + 2,
-                  spreadRadius: 6 * glow,
-                ),
-              ],
-            ),
-            child: child,
-          ),
-        );
-      },
-      child: widget.child,
-    );
-  }
-}
-
 class _PlayerCard extends StatelessWidget {
-  const _PlayerCard({    required this.participant,
+  const _PlayerCard({
+    required this.participant,
     required this.active,
     required this.tokensHome,
   });

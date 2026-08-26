@@ -82,69 +82,84 @@ async def main() -> None:
         assert r.json()["success"] and r.json()["data"]["avatar"] == cat["emoji"]
         print("[ok] avatar equipped")
 
-        # Start vs-CPU game - participants must carry username/avatar
-        r = await client.post("/api/v1/games/start", json={"mode": "computer"}, headers=headers)
-        game = r.json()["data"]
-        parts = {p["color"]: p for p in game["state"]["participants"]}
-        assert parts["red"]["username"] == creds["username"]
-        assert parts["red"]["avatar"] == cat["emoji"]
-        assert parts["yellow"]["is_bot"] and parts["yellow"]["username"] == "CPU"
-        gid = game["id"]
-        print(f"[ok] game {gid} started with dynamic participants")
-
-        # Roll until we get moves, then move; loop until CPU finishes or N turns
+        # Play vs-CPU games until we win one (random play may lose a game;
+        # this exercises both win and participation reward paths).
         import random as _rnd
-        turns = 0
-        stats = {"wait": 0, "passed": 0, "nolegal": 0, "moved": 0}
-        last_roll = {}
+        attempts = 0
         while True:
-            turns += 1
-            assert turns < 3000, (
-                f"stalled; stats={stats} last_roll={last_roll}")
-            state = (await client.get(f"/api/v1/games/{gid}", headers=headers)).json()["data"]
-            if state["status"] != "active":
-                break
-            if turns % 250 == 0:
-                print(f"   ..cycle {turns}: {stats} turn={state['current_turn']} "
-                      f"dice={state['dice_value']} tokens={state['state']['tokens']}")
-            if state["current_turn"] != "red" or state["dice_value"] is not None:
-                stats["wait"] += 1
-                await asyncio.sleep(0.001)
-                continue
-            roll = (await client.post(f"/api/v1/games/{gid}/roll", headers=headers)).json()
-            assert roll["success"], roll
-            data = roll["data"]
-            last_roll = {"dice": data.get("dice_value"), "moves": len(data.get("legal_moves", [])),
-                         "turn": data.get("current_turn")}
-            if data["current_turn"] != "red":
-                stats["passed"] += 1
-                continue
-            if not data["legal_moves"]:
-                stats["nolegal"] += 1
-                continue
-            choice = _rnd.choice(data["legal_moves"]) if _rnd.random() < 0.7 else data["legal_moves"][0]
-            mv = (await client.post(
-                f"/api/v1/games/{gid}/move",
-                json={"token_index": choice["token_index"]},
-                headers=headers,
-            ))
-            assert mv.json()["success"], mv.json()
-            stats["moved"] += 1
+            attempts += 1
+            assert attempts <= 8, "failed to beat the CPU within 8 games"
+            r = await client.post("/api/v1/games/start", json={"mode": "computer"}, headers=headers)
+            game = r.json()["data"]
+            parts = {p["color"]: p for p in game["state"]["participants"]}
+            assert parts["red"]["username"] == creds["username"]
+            assert parts["red"]["avatar"] == cat["emoji"]
+            assert parts["yellow"]["is_bot"] and parts["yellow"]["username"] == "CPU"
+            gid = game["id"]
+            print(f"[ok] game {gid} started with dynamic participants (attempt {attempts})")
 
-        final = (await client.get(f"/api/v1/games/{gid}", headers=headers)).json()["data"]
-        assert final["status"] == "finished"
-        print(f"[ok] full game finished in {turns} cycles, winner_id={final['winner_id']}")
+            # Roll until we get moves, then move; loop until someone finishes
+            turns = 0
+            stats = {"wait": 0, "passed": 0, "nolegal": 0, "moved": 0}
+            last_roll = {}
+            while True:
+                turns += 1
+                assert turns < 3000, (
+                    f"stalled; stats={stats} last_roll={last_roll}")
+                state = (await client.get(f"/api/v1/games/{gid}", headers=headers)).json()["data"]
+                if state["status"] != "active":
+                    break
+                if turns % 250 == 0:
+                    print(f"   ..cycle {turns}: {stats} turn={state['current_turn']} "
+                          f"dice={state['dice_value']} tokens={state['state']['tokens']}")
+                if state["current_turn"] != "red" or state["dice_value"] is not None:
+                    stats["wait"] += 1
+                    await asyncio.sleep(0.001)
+                    continue
+                roll = (await client.post(f"/api/v1/games/{gid}/roll", headers=headers)).json()
+                assert roll["success"], roll
+                data = roll["data"]
+                last_roll = {"dice": data.get("dice_value"), "moves": len(data.get("legal_moves", [])),
+                             "turn": data.get("current_turn")}
+                if data["current_turn"] != "red":
+                    stats["passed"] += 1
+                    continue
+                if not data["legal_moves"]:
+                    stats["nolegal"] += 1
+                    continue
+                choice = _rnd.choice(data["legal_moves"]) if _rnd.random() < 0.7 else data["legal_moves"][0]
+                mv = (await client.post(
+                    f"/api/v1/games/{gid}/move",
+                    json={"token_index": choice["token_index"]},
+                    headers=headers,
+                ))
+                assert mv.json()["success"], mv.json()
+                stats["moved"] += 1
+
+            final = (await client.get(f"/api/v1/games/{gid}", headers=headers)).json()["data"]
+            assert final["status"] == "finished"
+            print(f"[ok] game {gid} finished in {turns} cycles, winner_id={final['winner_id']}")
+            if final["winner_id"] == user_id:
+                break
+
+        losses = attempts - 1
 
         # Match history recorded + rewards actually credited
         r = await client.get("/api/v1/games/history", headers=headers)
         hist = r.json()["data"]
-        assert len(hist) >= 1 and hist[0]["game_id"] == gid
-        print(f"[ok] history: placement={hist[0]['placement']}, coins={hist[0]['coins_earned']}, xp={hist[0]['xp_earned']}")
+        assert len(hist) >= attempts
+        won_row = next(h for h in hist if h["game_id"] == gid)
+        assert won_row["placement"] == 1
+        print(f"[ok] history: placement={won_row['placement']}, coins={won_row['coins_earned']}, xp={won_row['xp_earned']}")
 
         me = (await client.get("/api/v1/users/me", headers=headers)).json()["data"]
-        assert me["coins"] == 850 + 100, f"rewards not credited: coins={me['coins']}"
-        assert me["wins"] == 1 and me["xp"] == 50, f"stats wrong: {me}"
-        print(f"[ok] rewards credited: coins={me['coins']}, wins={me['wins']}, xp={me['xp']}")
+        expected_coins = 850 + 100 + 25 * losses
+        expected_xp = 50 + 15 * losses
+        assert me["coins"] == expected_coins, (
+            f"rewards not credited: coins={me['coins']} expected={expected_coins}")
+        assert me["wins"] == 1 and me["xp"] == expected_xp, f"stats wrong: {me}"
+        print(f"[ok] rewards credited: coins={me['coins']}, wins={me['wins']}, xp={me['xp']}"
+              f" ({losses} lost game(s) paid participation)")
 
         # ---- Guest login: instant session, playable everywhere ----
         r = await client.post("/api/v1/auth/guest")

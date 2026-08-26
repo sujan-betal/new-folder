@@ -10,6 +10,7 @@ import '../../../logic/providers/auth_provider.dart';
 import '../../../logic/providers/game_online_provider.dart';
 import '../../widgets/board_painter.dart';
 import '../../widgets/board_view.dart';
+import '../../widgets/dice_glow.dart';
 import '../../widgets/dice_widget.dart';
 import '../../widgets/sound_toggle.dart';
 import '../game/local_game_screen.dart' show PrimaryGameButton;
@@ -210,6 +211,9 @@ class _OnlineGameScreenState extends State<OnlineGameScreen> {
       child: Consumer<GameOnlineProvider>(
         builder: (context, provider, _) {
           final game = provider.game;
+          final turnColor = game == null
+              ? Colors.white
+              : BoardPainter.colorOf(game.currentTurn);
 
           return Scaffold(
             body: Container(
@@ -324,43 +328,22 @@ class _OnlineGameScreenState extends State<OnlineGameScreen> {
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                DiceWidget(
-                                  value: game.diceValue ?? 1,
-                                  rolling: provider.busy &&
-                                      game.diceValue == null,
-                                  color: Colors.black87,
-                                  size: 68,
-                                  enabled: provider.canRoll,
-                                  onTap: provider.rollDice,
-                                ),
-                                const SizedBox(width: 18),
-                                Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      provider.busy
-                                          ? 'Syncing...'
-                                          : provider.isMyTurn
-                                              ? (game.diceValue == null
-                                                  ? 'Your turn - roll!'
-                                                  : 'Pick a token to move')
-                                              : '${provider.nameOf(game.currentTurn)}\'s turn',
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.w800,
-                                          fontSize: 14),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    PrimaryGameButton(
-                                      label: provider.canRoll
-                                          ? 'ROLL'
-                                          : 'WAIT',
-                                      width: 120,
-                                      enabled: provider.canRoll,
-                                      onTap: provider.rollDice,
-                                    ),
-                                  ],
+                                // Ludo King style: glowing tray dice only,
+                                // tap it to roll - no button, no turn text.
+                                DiceGlow(
+                                  active: game.isActive &&
+                                      game.diceValue == null &&
+                                      !provider.busy,
+                                  color: turnColor,
+                                  child: DiceWidget(
+                                    value: game.diceValue ?? 1,
+                                    rolling: provider.busy &&
+                                        game.diceValue == null,
+                                    color: turnColor,
+                                    size: 72,
+                                    enabled: provider.canRoll,
+                                    onTap: provider.rollDice,
+                                  ),
                                 ),
                               ],
                             ),
