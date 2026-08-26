@@ -307,6 +307,7 @@ class _OnlineGameScreenState extends State<OnlineGameScreen> {
                                           tokens: game.tokens,
                                           currentColor: game.currentTurn,
                                           movable: provider.movableForMe,
+                                          boardFx: provider.boardFx,
                                           onTokenTap: (_, index) =>
                                               provider.moveToken(index),
                                         ),

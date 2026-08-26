@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../game/board_geometry.dart';
+import '../../game/ludo_engine.dart';
 import 'board_painter.dart';
+import 'flame_burst.dart';
 
-class BoardView extends StatelessWidget {
+class BoardView extends StatefulWidget {
   const BoardView({
     super.key,
     required this.tokens,
@@ -14,6 +16,7 @@ class BoardView extends StatelessWidget {
     required this.movable,
     this.onTokenTap,
     this.highlightCurrent = true,
+    this.boardFx,
   });
 
   /// Map of color -> list of 4 positions (-1 base .. 57 home).
@@ -25,6 +28,37 @@ class BoardView extends StatelessWidget {
   final void Function(String color, int tokenIndex)? onTokenTap;
   final bool highlightCurrent;
 
+  /// Latest visual event (kill flames / home sparkles).
+  final BoardFx? boardFx;
+
+  @override
+  State<BoardView> createState() => _BoardViewState();
+}
+
+class _BoardViewState extends State<BoardView> {
+  int? _lastFxId;
+  final List<_ActiveBurst> _bursts = [];
+
+  void _consumeFx(double cell) {
+    final fx = widget.boardFx;
+    if (fx == null || fx.id == _lastFxId) return;
+    _lastFxId = fx.id;
+    _bursts.clear();
+    for (final spot in fx.spots) {
+      final center = BoardGeometry.tokenCenter(
+        color: spot.color,
+        pos: spot.pos,
+        tokenIndex: spot.tokenIndex,
+        cell: cell,
+      );
+      _bursts.add(_ActiveBurst(
+        key: ValueKey('fx_${fx.id}_${spot.color}_${spot.tokenIndex}'),
+        center: center,
+        style: fx.kind == FxKind.flame ? FxStyle.flame : FxStyle.sparkle,
+      ));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -35,6 +69,9 @@ class BoardView extends StatelessWidget {
         final side = outer - framePad * 2;
         final cell = side / BoardGeometry.gridSize;
 
+        _consumeFx(cell);
+
+        final tokens = widget.tokens;
         final entries = <_TokenEntry>[];
         tokens.forEach((color, positions) {
           for (var i = 0; i < positions.length; i++) {
@@ -99,12 +136,25 @@ class BoardView extends StatelessWidget {
                 Positioned.fill(
                   child: CustomPaint(
                     painter: BoardPainter(
-                      activeColor: highlightCurrent ? currentColor : null,
+                      activeColor:
+                          widget.highlightCurrent ? widget.currentColor : null,
                     ),
                   ),
                 ),
-                for (final e in entries)
-                  _token(e, cell),
+                for (final e in entries) _token(e, cell),
+                for (final burst in _bursts)
+                  Positioned(
+                    key: burst.key,
+                    left: burst.center.dx - cell * 1.1,
+                    top: burst.center.dy - cell * 1.1,
+                    width: cell * 2.2,
+                    height: cell * 2.2,
+                    child: FlameBurst(
+                      size: cell * 2.2,
+                      style: burst.style,
+                      onFinished: () => _removeBurst(burst.key),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -113,10 +163,17 @@ class BoardView extends StatelessWidget {
     );
   }
 
+  void _removeBurst(Key key) {
+    if (!mounted) return;
+    setState(() {
+      _bursts.removeWhere((b) => b.key == key);
+    });
+  }
+
   Widget _token(_TokenEntry entry, double cell) {
     final color = BoardPainter.colorOf(entry.color);
-    final isMine = entry.color == currentColor;
-    final canMove = isMine && movable.contains(entry.tokenIndex);
+    final isMine = entry.color == widget.currentColor;
+    final canMove = isMine && widget.movable.contains(entry.tokenIndex);
     final size = cell * 0.74;
 
     final token = _PawnToken(size: size, color: color, glowing: canMove);
@@ -132,10 +189,10 @@ class BoardView extends StatelessWidget {
           : token,
     );
 
-    if (canMove && onTokenTap != null) {
+    if (canMove && widget.onTokenTap != null) {
       result = GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: () => onTokenTap!(entry.color, entry.tokenIndex),
+        onTap: () => widget.onTokenTap!(entry.color, entry.tokenIndex),
         child: AnimatedPositioned(
           key: ValueKey('hit_${entry.color}_${entry.tokenIndex}'),
           duration: const Duration(milliseconds: 300),
@@ -297,4 +354,16 @@ class _TokenEntry {
   final String color;
   final int tokenIndex;
   Offset center;
+}
+
+class _ActiveBurst {
+  const _ActiveBurst({
+    required this.key,
+    required this.center,
+    required this.style,
+  });
+
+  final Key key;
+  final Offset center;
+  final FxStyle style;
 }

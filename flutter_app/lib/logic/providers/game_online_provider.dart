@@ -25,6 +25,10 @@ class GameOnlineProvider extends ChangeNotifier {
   bool _finishedNotified = false;
   VoidCallback? onFinished;
 
+  BoardFx? boardFx;
+  int _fxSeq = 0;
+  Map<String, List<int>>? _prevTokens;
+
   static const List<String> colorOrder = ['red', 'green', 'yellow', 'blue'];
 
   int get myUserId => _auth.user?.id ?? -1;
@@ -76,11 +80,13 @@ class GameOnlineProvider extends ChangeNotifier {
               SoundManager.instance.turn();
             }
             game = fresh;
+            _detectFx();
             movable = {};
             notifyListeners();
           }
         } else {
           game = fresh;
+          _detectFx();
           movable = {};
           notifyListeners();
           _notifyFinishedOnce();
@@ -91,6 +97,43 @@ class GameOnlineProvider extends ChangeNotifier {
         _polling = false;
       }
     });
+  }
+
+  /// Detects kills / home entries by diffing the previous token snapshot.
+  void _detectFx() {
+    final g = game;
+    if (g == null) return;
+    final prev = _prevTokens;
+    _prevTokens = {
+      for (final e in g.tokens.entries) e.key: List<int>.of(e.value),
+    };
+    if (prev == null) return;
+
+    final fire = <FxSpot>[];
+    final sparkle = <FxSpot>[];
+    prev.forEach((color, before) {
+      final after = g.tokens[color];
+      if (after == null) return;
+      for (var i = 0; i < before.length && i < after.length; i++) {
+        final was = before[i];
+        final now = after[i];
+        if (was >= 0 &&
+            was <= LudoEngine.trackEnd &&
+            now == LudoEngine.basePos) {
+          fire.add(FxSpot(color: color, tokenIndex: i, pos: was));
+        } else if (was != LudoEngine.homeDone &&
+            now == LudoEngine.homeDone) {
+          sparkle.add(
+              FxSpot(color: color, tokenIndex: i, pos: LudoEngine.homeDone));
+        }
+      }
+    });
+
+    if (fire.isNotEmpty) {
+      boardFx = BoardFx(id: ++_fxSeq, kind: FxKind.flame, spots: fire);
+    } else if (sparkle.isNotEmpty) {
+      boardFx = BoardFx(id: ++_fxSeq, kind: FxKind.sparkle, spots: sparkle);
+    }
   }
 
   void _notifyFinishedOnce() {
@@ -111,6 +154,7 @@ class GameOnlineProvider extends ChangeNotifier {
     try {
       await _repository.roll(game!.id);
       game = await _repository.get(game!.id);
+      _detectFx();
       SoundManager.instance.diceRoll();
       final color = myColor;
       lastRollLabel =
@@ -132,6 +176,7 @@ class GameOnlineProvider extends ChangeNotifier {
     try {
       await _repository.move(game!.id, tokenIndex);
       game = await _repository.get(game!.id);
+      _detectFx();
       SoundManager.instance.move();
       movable = {};
       if (!game!.isActive) _notifyFinishedOnce();

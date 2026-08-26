@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -18,9 +20,16 @@ class LocalGameScreen extends StatefulWidget {
   State<LocalGameScreen> createState() => _LocalGameScreenState();
 }
 
-class _LocalGameScreenState extends State<LocalGameScreen> {
+class _LocalGameScreenState extends State<LocalGameScreen>
+    with SingleTickerProviderStateMixin {
   late final GameController _controller;
   bool _showingWinner = false;
+  int? _lastFxId;
+
+  late final AnimationController _shake = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 420),
+  );
 
   @override
   void initState() {
@@ -34,10 +43,23 @@ class _LocalGameScreenState extends State<LocalGameScreen> {
 
   @override
   void dispose() {
+    _shake.dispose();
     _controller
       ..removeListener(_onChanged)
       ..dispose();
     super.dispose();
+  }
+
+  void _reactToFx() {
+    final fx = _controller.boardFx;
+    if (fx == null || fx.id == _lastFxId) return;
+    _lastFxId = fx.id;
+    if (fx.kind == FxKind.flame) {
+      HapticFeedback.heavyImpact();
+      _shake.forward(from: 0);
+    } else {
+      HapticFeedback.lightImpact();
+    }
   }
 
   void _onChanged() {
@@ -168,6 +190,7 @@ class _LocalGameScreenState extends State<LocalGameScreen> {
             animation: _controller,
             builder: (context, _) {
               final controller = _controller;
+              _reactToFx();
               return Column(
                 children: [
                   _header(context),
@@ -179,12 +202,25 @@ class _LocalGameScreenState extends State<LocalGameScreen> {
                         aspectRatio: 1,
                         child: Padding(
                           padding: const EdgeInsets.all(8),
-                          child: BoardView(
-                            tokens: controller.tokens,
-                            currentColor: controller.currentColor,
-                            movable: controller.movable,
-                            onTokenTap: (color, index) =>
-                                controller.moveToken(index),
+                          child: AnimatedBuilder(
+                            animation: _shake,
+                            builder: (context, child) {
+                              final t = _shake.value;
+                              final dx =
+                                  math.sin(t * math.pi * 6) * 7 * (1 - t);
+                              return Transform.translate(
+                                offset: Offset(dx, 0),
+                                child: child,
+                              );
+                            },
+                            child: BoardView(
+                              tokens: controller.tokens,
+                              currentColor: controller.currentColor,
+                              movable: controller.movable,
+                              boardFx: controller.boardFx,
+                              onTokenTap: (color, index) =>
+                                  controller.moveToken(index),
+                            ),
                           ),
                         ),
                       ),
@@ -281,43 +317,33 @@ class _LocalGameScreenState extends State<LocalGameScreen> {
     final controller = _controller;
     final rolling = controller.phase == GamePhase.rolling;
     final color = BoardPainter.colorOf(controller.currentColor);
+    final waiting = controller.phase == GamePhase.awaitingRoll;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 2, 18, 12),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+      padding: const EdgeInsets.fromLTRB(18, 8, 18, 14),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(
-            controller.isHumanTurn
-                ? "${controller.currentParticipant.name}'s turn"
-                : 'CPU is thinking...',
-            style: TextStyle(
-              fontWeight: FontWeight.w900,
-              fontSize: 15,
-              color: color.withValues(alpha: 0.95),
+          // Ludo King style: no turn text - the active dice just glows.
+          _DiceGlow(
+            active: waiting,
+            color: color,
+            child: DiceWidget(
+              value: controller.diceValue ?? 1,
+              rolling: rolling,
+              // Ludo King dice: white face, black pips, player-colored rim.
+              color: Colors.black87,
+              size: 68,
+              enabled: controller.canRoll,
+              onTap: controller.roll,
             ),
           ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              DiceWidget(
-                value: controller.diceValue ?? 1,
-                rolling: rolling,
-                // Ludo King dice: white face, black pips, player-colored rim.
-                color: Colors.black87,
-                size: 68,
-                enabled: controller.canRoll,
-                onTap: controller.roll,
-              ),
-              const SizedBox(width: 22),
-              PrimaryGameButton(
-                label: controller.canRoll ? 'ROLL DICE' : '...',
-                width: 140,
-                enabled: controller.canRoll,
-                onTap: controller.roll,
-              ),
-            ],
+          const SizedBox(width: 22),
+          PrimaryGameButton(
+            label: controller.canRoll ? 'ROLL DICE' : '...',
+            width: 140,
+            enabled: controller.canRoll,
+            onTap: controller.roll,
           ),
         ],
       ),
@@ -325,9 +351,84 @@ class _LocalGameScreenState extends State<LocalGameScreen> {
   }
 }
 
+/// Ludo King style halo: whoever's turn it is, their dice pulses.
+/// Works for CPU turns too - no "thinking" text needed.
+class _DiceGlow extends StatefulWidget {
+  const _DiceGlow({
+    required this.active,
+    required this.color,
+    required this.child,
+  });
+
+  final bool active;
+  final Color color;
+  final Widget child;
+
+  @override
+  State<_DiceGlow> createState() => _DiceGlowState();
+}
+
+class _DiceGlowState extends State<_DiceGlow>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 620),
+    lowerBound: 0.35,
+    upperBound: 1.0,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.active) _controller.repeat(reverse: true);
+  }
+
+  @override
+  void didUpdateWidget(covariant _DiceGlow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active && !_controller.isAnimating) {
+      _controller.repeat(reverse: true);
+    } else if (!widget.active && _controller.isAnimating) {
+      _controller.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final glow = widget.active ? _controller.value : 0.0;
+        return Transform.scale(
+          scale: 1 + glow * 0.07,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: widget.color.withValues(alpha: 0.75 * glow),
+                  blurRadius: 26 * glow + 2,
+                  spreadRadius: 6 * glow,
+                ),
+              ],
+            ),
+            child: child,
+          ),
+        );
+      },
+      child: widget.child,
+    );
+  }
+}
+
 class _PlayerCard extends StatelessWidget {
-  const _PlayerCard({
-    required this.participant,
+  const _PlayerCard({    required this.participant,
     required this.active,
     required this.tokensHome,
   });

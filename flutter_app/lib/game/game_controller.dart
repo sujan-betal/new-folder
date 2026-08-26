@@ -43,8 +43,10 @@ class GameController extends ChangeNotifier {
   int? diceValue;
   Set<int> movable = {};
   String? winnerColor;
+  BoardFx? boardFx;
   int _sixStreak = 0;
   int _generation = 0;
+  int _fxSeq = 0;
   bool disposed = false;
 
   String get currentColor => _current;
@@ -156,6 +158,26 @@ class GameController extends ChangeNotifier {
 
     // Position already at target; apply captures / flags via the engine.
     final result = LudoEngine.resolveAfterMove(tokens, color, target);
+
+    if (result.captured) {
+      boardFx = BoardFx(
+        id: ++_fxSeq,
+        kind: FxKind.flame,
+        spots: [
+          for (final v in result.victims)
+            FxSpot(color: v.color, tokenIndex: v.tokenIndex, pos: v.fromPos),
+        ],
+      );
+    } else if (result.reachedHome) {
+      boardFx = BoardFx(
+        id: ++_fxSeq,
+        kind: FxKind.sparkle,
+        spots: [
+          FxSpot(
+              color: color, tokenIndex: tokenIndex, pos: LudoEngine.homeDone),
+        ],
+      );
+    }
     notifyListeners();
 
     if (result.captured) {
@@ -184,13 +206,6 @@ class GameController extends ChangeNotifier {
       winnerColor ??= color;
       phase = GamePhase.finished;
       SoundManager.instance.win();
-      notifyListeners();
-      return;
-    }
-
-    if (result.finished) {
-      winnerColor ??= color;
-      phase = GamePhase.finished;
       notifyListeners();
       return;
     }

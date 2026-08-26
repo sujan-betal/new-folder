@@ -44,6 +44,7 @@ class LudoEngine {
     tokens[tokenIndex] = target;
 
     final capturedColors = <String>[];
+    final victims = <CapturedToken>[];
     var captured = false;
 
     final abs = target <= trackEnd ? BoardGeometry.absoluteSquare(color, target) : -1;
@@ -58,6 +59,7 @@ class LudoEngine {
           if ((offset + p) % 52 == abs) {
             oppTokens[i] = basePos;
             captured = true;
+            victims.add(CapturedToken(color: other, tokenIndex: i, fromPos: p));
             if (!capturedColors.contains(other)) capturedColors.add(other);
           }
         }
@@ -69,6 +71,7 @@ class LudoEngine {
       to: target,
       captured: captured,
       capturedColors: capturedColors,
+      victims: victims,
       reachedHome: target == homeDone,
       finished: tokens.every((p) => p == homeDone),
     );
@@ -84,6 +87,7 @@ class LudoEngine {
     int finalPos,
   ) {
     final capturedColors = <String>[];
+    final victims = <CapturedToken>[];
     var captured = false;
 
     final abs =
@@ -99,6 +103,7 @@ class LudoEngine {
           if ((offset + p) % 52 == abs) {
             oppTokens[i] = basePos;
             captured = true;
+            victims.add(CapturedToken(color: other, tokenIndex: i, fromPos: p));
             if (!capturedColors.contains(other)) capturedColors.add(other);
           }
         }
@@ -110,6 +115,7 @@ class LudoEngine {
       to: finalPos,
       captured: captured,
       capturedColors: capturedColors,
+      victims: victims,
       reachedHome: finalPos == homeDone,
       finished: allTokens[color]!.every((p) => p == homeDone),
     );
@@ -136,12 +142,52 @@ class LudoEngine {
   }
 }
 
+class CapturedToken {
+  const CapturedToken({
+    required this.color,
+    required this.tokenIndex,
+    required this.fromPos,
+  });
+
+  final String color;
+  final int tokenIndex;
+
+  /// Ring position the victim occupied when it was cut.
+  final int fromPos;
+}
+
+/// Visual effect kinds for the presentation layer.
+enum FxKind { flame, sparkle }
+
+/// One board square where an effect should play.
+class FxSpot {
+  const FxSpot({
+    required this.color,
+    required this.tokenIndex,
+    required this.pos,
+  });
+
+  final String color;
+  final int tokenIndex;
+  final int pos;
+}
+
+/// A numbered visual event (kill flames / home sparkles) for the UI.
+class BoardFx {
+  const BoardFx({required this.id, required this.kind, required this.spots});
+
+  final int id;
+  final FxKind kind;
+  final List<FxSpot> spots;
+}
+
 class MoveResult {
   MoveResult({
     required this.from,
     required this.to,
     required this.captured,
     required this.capturedColors,
+    this.victims = const [],
     required this.reachedHome,
     required this.finished,
   });
@@ -150,6 +196,7 @@ class MoveResult {
   final int to;
   final bool captured;
   final List<String> capturedColors;
+  final List<CapturedToken> victims;
   final bool reachedHome;
   final bool finished;
 }
