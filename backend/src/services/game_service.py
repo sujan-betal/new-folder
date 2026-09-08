@@ -10,9 +10,60 @@ from src.models.room_model import Room, RoomPlayer
 from src.models.user_model import User
 from src.services.user_service import add_rewards
 from src.utils import ludo_engine
+from src.utils.ws_hub import publish
 
 BOT_USERNAME = "__cpu_bot__"
 MAX_SIX_STREAK = 3
+
+
+async def _broadcast_game(db: AsyncSession, game: Game) -> None:
+    """Push the latest game + room snapshots to real-time subscribers."""
+    if game.mode != "online":
+        return
+    await publish(f"game:{game.id}", {"kind": "game", "game": serialize_game(game)})
+    if game.room_id:
+        room_result = await db.execute(
+            select(Room).where(Room.id == game.room_id)
+        )
+        room = room_result.scalar_one_or_none()
+        if room is not None:
+            players_result = await db.execute(
+                select(RoomPlayer)
+                .where(RoomPlayer.room_id == room.id)
+                .options(selectinload(RoomPlayer.user))
+            )
+            players = list(players_result.scalars().all())
+            active_id = game.id if game.status == "active" else None
+            await publish(
+                f"room:{room.code}",
+                {
+                    "kind": "room",
+                    "game_started": game.status == "active",
+                    "room": {
+                        "id": room.id,
+                        "code": room.code,
+                        "name": room.name,
+                        "host_id": room.host_id,
+                        "max_players": room.max_players,
+                        "bet_amount": room.bet_amount,
+                        "status": room.status,
+                        "created_at": str(room.created_at),
+                        "active_game_id": active_id,
+                        "players": [
+                            {
+                                "id": p.id,
+                                "user_id": p.user_id,
+                                "username": p.user.username if p.user else "?",
+                                "avatar": p.user.avatar if p.user else "",
+                                "color": p.color,
+                                "seat": p.seat,
+                                "is_ready": p.is_ready,
+                            }
+                            for p in sorted(players, key=lambda x: x.seat)
+                        ],
+                    },
+                },
+            )
 
 
 def serialize_game(game: Game) -> dict:
@@ -116,6 +167,8 @@ async def start_game_service(db: AsyncSession, user: User, mode: str, room_code:
         await db.commit()
         await db.refresh(game)
 
+        await _broadcast_game(db, game)
+
         return {"error": False, "data": serialize_game(game)}
     except Exception as e:
         await db.rollback()
@@ -165,6 +218,8 @@ async def roll_dice_service(db: AsyncSession, user: User, game_id: int) -> dict:
         await db.commit()
 
         game = await _play_bot_turns(db, game)
+
+        await _broadcast_game(db, game)
 
         return {
             "error": False,
@@ -229,6 +284,7 @@ async def make_move_service(db: AsyncSession, user: User, game_id: int, token_in
 
         if result["finished"]:
             await _finish_game(db, game, winner_color=color)
+            await _broadcast_game(db, game)
             return {"error": False, "data": serialize_game(game), "finished": True}
 
         extra_turn = dice_used == 6 or result["captured"] or result["reached_home"]
@@ -243,6 +299,8 @@ async def make_move_service(db: AsyncSession, user: User, game_id: int, token_in
         await db.commit()
 
         game = await _play_bot_turns(db, game)
+
+        await _broadcast_game(db, game)
 
         return {
             "error": False,

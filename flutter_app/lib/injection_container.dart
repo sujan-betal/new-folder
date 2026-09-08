@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'core/network/api_client.dart';
 import 'core/network/facebook_sign_in_service.dart';
 import 'core/network/google_sign_in_service.dart';
+import 'core/network/realtime_client.dart';
 import 'core/network/token_storage.dart';
 import 'core/sound/sound_manager.dart';
 import 'data/repositories/auth_repository.dart';
@@ -22,6 +23,7 @@ Future<void> init() async {
   await SoundManager.instance.init(prefs);
   sl.registerLazySingleton<TokenStorage>(() => TokenStorage(prefs));
   sl.registerLazySingleton<ApiClient>(() => ApiClient(sl()));
+  sl.registerFactory<RealtimeClient>(() => RealtimeClient(sl()));
   sl.registerLazySingleton<AuthRepository>(() => AuthRepository(sl(), sl()));
   sl.registerLazySingleton<GameRepository>(() => GameRepository(sl()));
   sl.registerLazySingleton<RoomRepository>(() => RoomRepository(sl()));
@@ -32,9 +34,9 @@ Future<void> init() async {
   sl.registerLazySingleton<FacebookSignInService>(() => FacebookSignInService());
   sl.registerLazySingleton<AuthProvider>(() => AuthProvider(sl())..bootstrap());
   sl.registerFactory<GameOnlineProvider>(
-    () => GameOnlineProvider(sl(), sl()),
+    () => GameOnlineProvider(sl(), sl(), sl()),
   );
-  sl.registerFactory<RoomProvider>(() => RoomProvider(sl()));
+  sl.registerFactory<RoomProvider>(() => RoomProvider(sl(), sl()));
   sl.registerFactory<ShopProvider>(() => ShopProvider(sl(), sl()));
   sl.registerFactory<ProfileProvider>(() => ProfileProvider(sl(), sl()));
 }

@@ -155,6 +155,7 @@ class _OnlineGameScreenState extends State<OnlineGameScreen> {
     }
     final active = game.currentTurn == color;
     final waiting = game.diceValue == null;
+    final mine = color == provider.myColor;
     return Align(
       alignment:
           alignRight ? Alignment.centerRight : Alignment.centerLeft,
@@ -164,10 +165,10 @@ class _OnlineGameScreenState extends State<OnlineGameScreen> {
         avatar: provider.avatarOf(color),
         tokensHome: provider.tokensHomeOf(color),
         active: active,
-        glowing: active && waiting && !provider.busy,
+        glowing: active && waiting && !provider.busy && !mine,
         diceValue: game.diceValue ?? 1,
-        rolling: active && waiting && provider.busy,
-        canRoll: provider.canRoll && color == provider.myColor,
+        rolling: provider.isRolling(color),
+        canRoll: provider.canRoll && mine,
         onRollTap: provider.rollDice,
       ),
     );
@@ -278,6 +279,11 @@ class _OnlineGameScreenState extends State<OnlineGameScreen> {
                               ],
                             ),
                           ),
+                          _YourTurnBanner(
+                            show: provider.isMyTurn &&
+                                game.diceValue == null &&
+                                !provider.busy,
+                          ),
                           Expanded(
                             flex: 7,
                             child: Column(
@@ -293,7 +299,7 @@ class _OnlineGameScreenState extends State<OnlineGameScreen> {
                                       child: Padding(
                                         padding: const EdgeInsets.all(4),
                                         child: BoardView(
-                                          tokens: game.tokens,
+                                          tokens: provider.displayTokens,
                                           currentColor: game.currentTurn,
                                           movable: provider.movableForMe,
                                           boardFx: provider.boardFx,
@@ -316,6 +322,89 @@ class _OnlineGameScreenState extends State<OnlineGameScreen> {
           );
         },
       ),
+    );
+  }
+}
+
+/// Ludo King style pulsing "YOUR TURN" callout above the board.
+class _YourTurnBanner extends StatefulWidget {
+  const _YourTurnBanner({required this.show});
+
+  final bool show;
+
+  @override
+  State<_YourTurnBanner> createState() => _YourTurnBannerState();
+}
+
+class _YourTurnBannerState extends State<_YourTurnBanner>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 450),
+    lowerBound: 0.94,
+    upperBound: 1.06,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.show) _pulse.repeat(reverse: true);
+  }
+
+  @override
+  void didUpdateWidget(covariant _YourTurnBanner oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.show && !oldWidget.show) {
+      _pulse.repeat(reverse: true);
+    } else if (!widget.show && oldWidget.show) {
+      _pulse.stop();
+      _pulse.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 200),
+      child: widget.show
+          ? Container(
+              key: const ValueKey('yourturn'),
+              margin: const EdgeInsets.symmetric(horizontal: 12),
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                gradient: AppColors.goldGradient,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.goldDark.withValues(alpha: 0.5),
+                    blurRadius: 12,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: ScaleTransition(
+                scale: _pulse,
+                child: const Text(
+                  'YOUR TURN - ROLL!',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.5,
+                    color: Color(0xFF4A2C00),
+                  ),
+                ),
+              ),
+            )
+          : const SizedBox.shrink(
+              key: ValueKey('none'),
+            ),
     );
   }
 }

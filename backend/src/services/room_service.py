@@ -6,8 +6,13 @@ from src.models.room_model import Room, RoomPlayer
 from src.models.user_model import User
 from src.schemas.room_schema import RoomCreate
 from src.utils.helpers import generate_room_code
+from src.utils.ws_hub import publish
 
 COLOR_CYCLE = ["red", "green", "yellow", "blue"]
+
+
+async def _publish_room_state(code: str, payload: dict) -> None:
+    await publish(f"room:{code.upper()}", {"kind": "room", **payload})
 
 
 def serialize_room(room: Room) -> dict:
@@ -85,7 +90,9 @@ async def create_room_service(db: AsyncSession, user: User, payload: RoomCreate)
         await db.refresh(room)
 
         refreshed = await get_room_by_code(db, room.code)
-        return {"error": False, "data": serialize_room(refreshed["room"])}
+        data = serialize_room(refreshed["room"])
+        await _publish_room_state(room.code, {"room": data})
+        return {"error": False, "data": data}
     except Exception as e:
         await db.rollback()
         return {"error": True, "message": f"Room creation failed: {str(e)}", "status": 500}
@@ -117,7 +124,12 @@ async def join_room_service(db: AsyncSession, user: User, code: str) -> dict:
         await db.commit()
 
         refreshed = await get_room_by_code(db, room.code)
-        return {"error": False, "data": serialize_room(refreshed["room"])}
+        # The identity-mapped Room keeps its pre-commit players collection; make
+        # sure the joiner (and every seated player) shows up in the snapshot.
+        await db.refresh(refreshed["room"], ["players"])
+        data = serialize_room(refreshed["room"])
+        await _publish_room_state(room.code, {"room": data})
+        return {"error": False, "data": data}
     except Exception as e:
         await db.rollback()
         return {"error": True, "message": f"Join failed: {str(e)}", "status": 500}
@@ -136,7 +148,10 @@ async def toggle_ready_service(db: AsyncSession, user: User, code: str) -> dict:
 
         player.is_ready = not player.is_ready
         await db.commit()
-        return {"error": False, "data": serialize_room(room)}
+        await db.refresh(room, ["players"])
+        data = serialize_room(room)
+        await _publish_room_state(room.code, {"room": data})
+        return {"error": False, "data": data}
     except Exception as e:
         await db.rollback()
         return {"error": True, "message": f"Ready toggle failed: {str(e)}", "status": 500}
@@ -159,13 +174,20 @@ async def leave_room_service(db: AsyncSession, user: User, code: str) -> dict:
         if not remaining:
             await db.delete(room)
             await db.commit()
+            await _publish_room_state(
+                code,
+                {"room": {"code": code.upper(), "status": "closed"}, "closed": True},
+            )
             return {"error": False, "data": {"code": code, "status": "closed"}}
 
         if room.host_id == user.id:
             room.host_id = remaining[0].user_id
 
         await db.commit()
-        return {"error": False, "data": serialize_room(room)}
+        await db.refresh(room, ["players"])
+        data = serialize_room(room)
+        await _publish_room_state(room.code, {"room": data})
+        return {"error": False, "data": data}
     except Exception as e:
         await db.rollback()
         return {"error": True, "message": f"Leave failed: {str(e)}", "status": 500}

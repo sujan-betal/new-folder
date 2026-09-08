@@ -6,6 +6,7 @@ class RoomModel {
     required this.maxPlayers,
     required this.status,
     required this.players,
+    this.activeGameId,
   });
 
   final String code;
@@ -14,6 +15,7 @@ class RoomModel {
   final int maxPlayers;
   final String status;
   final List<RoomPlayerModel> players;
+  final int? activeGameId;
 
   bool get isFull => players.length >= maxPlayers;
 
@@ -26,6 +28,7 @@ class RoomModel {
         players: ((json['players'] as List?) ?? const [])
             .map((e) => RoomPlayerModel.fromJson(Map<String, dynamic>.from(e)))
             .toList(),
+        activeGameId: (json['active_game_id'] as num?)?.toInt(),
       );
 }
 

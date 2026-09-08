@@ -29,6 +29,7 @@ from src.models.user_model import Purchase, User  # noqa: F401
 from src.routes.user_route import router as user_router
 from src.routes.shop_route import router as shop_router
 from src.routes.config_route import router as config_router
+from src.routes.ws_route import router as ws_router
 
 
 @asynccontextmanager
@@ -52,6 +53,10 @@ def create_app() -> FastAPI:
 
     for router in (auth_router, user_router, room_router, game_router, shop_router, config_router):
         application.include_router(router, prefix=settings.API_V1_PREFIX)
+
+    # WebSocket routes must NOT be mounted under a prefixed router that the
+    # http clients hit; include it directly (no prefix so URLs are stable).
+    application.include_router(ws_router, prefix=settings.API_V1_PREFIX)
 
     @application.get(f"{settings.API_V1_PREFIX}/health", tags=["health"])
     async def health():
