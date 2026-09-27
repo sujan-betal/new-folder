@@ -4,12 +4,20 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+<<<<<<< HEAD
 import 'injection_container.dart' as di;
 import 'core/sound/haptics.dart';
 import 'core/sound/sound_manager.dart';
+=======
+import 'core/network/deep_link_service.dart';
+>>>>>>> 24fa8a1f77a071282b4ce0cc0689e66e3ca204c2
 import 'core/theme/app_theme.dart';
+import 'injection_container.dart' as di;
 import 'logic/providers/auth_provider.dart';
+import 'presentation/screens/online/rooms_screen.dart';
 import 'presentation/screens/splash_screen.dart';
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,8 +37,56 @@ Future<void> main() async {
   runApp(const LudoApp());
 }
 
-class LudoApp extends StatelessWidget {
+class LudoApp extends StatefulWidget {
   const LudoApp({super.key});
+
+  @override
+  State<LudoApp> createState() => _LudoAppState();
+}
+
+class _LudoAppState extends State<LudoApp> {
+  final DeepLinkService _deepLink = DeepLinkService();
+  StreamSubscription<String>? _deepLinkSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _deepLink.start().then((_) {
+      _deepLinkSub = _deepLink.codes.listen(_handleDeepLink);
+    });
+  }
+
+  @override
+  void dispose() {
+    _deepLinkSub?.cancel();
+    _deepLink.dispose();
+    super.dispose();
+  }
+
+  /// A tapped invite (`ludo://join/<CODE>`) signs the user in as a guest when
+  /// needed and drops them straight into that room's lobby - the Ludo King
+  /// one-tap experience.
+  Future<void> _handleDeepLink(String code) async {
+    final auth = context.read<AuthProvider>();
+    if (!auth.bootstrapped) await auth.bootstrap();
+    if (!mounted) return;
+    if (!auth.isAuthenticated) {
+      final ok = await auth.loginAsGuest();
+      if (!ok || !mounted) return;
+    }
+    _pushJoin(code);
+  }
+
+  void _pushJoin(String code) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || navigatorKey.currentState == null) return;
+      navigatorKey.currentState!.push(
+        MaterialPageRoute(
+          builder: (_) => WaitingRoomScreen(roomCode: code.toUpperCase()),
+        ),
+      );
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -42,6 +98,7 @@ class LudoApp extends StatelessWidget {
         title: 'Ludo Master',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.dark,
+<<<<<<< HEAD
         home: const _AudioLifecycle(child: SplashScreen()),
       ),
     );
@@ -89,3 +146,11 @@ class _AudioLifecycleState extends State<_AudioLifecycle>
   @override
   Widget build(BuildContext context) => widget.child;
 }
+=======
+        navigatorKey: navigatorKey,
+        home: const SplashScreen(),
+      ),
+    );
+  }
+}
+>>>>>>> 24fa8a1f77a071282b4ce0cc0689e66e3ca204c2

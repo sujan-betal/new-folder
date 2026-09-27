@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/deep_link.dart';
 import '../../../data/models/room_model.dart';
 import '../../../data/repositories/game_repository.dart';
 import '../../../injection_container.dart' as di;
@@ -119,10 +121,11 @@ class _RoomsBodyState extends State<_RoomsBody> {
   }
 
   void _openWaiting() {
+    final code = context.read<RoomProvider>().room?.code;
     Navigator.of(context)
         .push(
           MaterialPageRoute(
-            builder: (_) => const WaitingRoomScreen(),
+            builder: (_) => WaitingRoomScreen(roomCode: code),
           ),
         )
         .then((_) {
@@ -303,59 +306,116 @@ class _RoomTile extends StatelessWidget {
 }
 
 class WaitingRoomScreen extends StatefulWidget {
-  const WaitingRoomScreen({super.key});
+  const WaitingRoomScreen({super.key, this.roomCode});
+
+  /// Room code to attach to. Null when entering from create/join where the
+  /// RoomProvider already holds the room.
+  final String? roomCode;
 
   @override
   State<WaitingRoomScreen> createState() => _WaitingRoomScreenState();
 }
 
 class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
-  Timer? _timer;
+  late final RoomProvider _provider = di.sl<RoomProvider>();
+  Timer? _fallback;
   bool _leaving = false;
+  bool _navigating = false;
+  bool _sharing = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<RoomProvider>().refresh();
-    });
-    _timer = Timer.periodic(const Duration(milliseconds: 1600), (_) async {
-      if (!mounted) return;
-      final provider = context.read<RoomProvider>();
-      final hadRoom = provider.room != null;
-      await provider.refresh();
-      if (!mounted || _leaving) return;
-      if (hadRoom && provider.room == null) {
-        // Host closed the room.
-        Navigator.of(context).pop();
-      }
+    _provider.onClosed = _handleClosed;
+    _provider.onGameStarted = _handleGameStarted;
+
+    final code = widget.roomCode;
+    if (code != null && code.isNotEmpty) {
+      _provider.attach(code);
+    }
+
+    // Safety net polling only kicks in when the socket is unavailable; on a
+    // healthy connection the realtime pushes drive everything.
+    _fallback = Timer.periodic(const Duration(seconds: 5), (_) async {
+      if (!mounted || _provider.room == null) return;
+      await _provider.refresh();
     });
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _fallback?.cancel();
+    _provider.disconnect();
     super.dispose();
   }
 
-  Future<void> _leave() async {
+  void _handleClosed() {
+    if (!mounted || _leaving || _navigating) return;
     _leaving = true;
-    _timer?.cancel();
-    await context.read<RoomProvider>().leave();
+    _fallback?.cancel();
+    Navigator.of(context).pop();
+  }
+
+  /// Every seated player is pushed straight into the game the moment the host
+  /// presses start - nobody is left waiting in the lobby.
+  void _handleGameStarted(int gameId) {
+    if (!mounted || _navigating || _leaving) return;
+    _navigating = true;
+    _fallback?.cancel();
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => OnlineGameScreen(gameId: gameId)),
+    );
+  }
+
+  Future<void> _leave() async {
+    if (_leaving || _navigating) return;
+    _leaving = true;
+    _fallback?.cancel();
+    await _provider.leave();
     if (mounted) Navigator.of(context).pop();
   }
 
-  Future<void> _startGame(RoomProvider rooms) async {
+  Future<void> _copyCode() async {
+    final room = _provider.room;
+    if (room == null) return;
+    await Clipboard.setData(ClipboardData(text: room.code));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Room code copied - share it with a friend!')));
+  }
+
+  Future<void> _invite() async {
+    final room = _provider.room;
+    if (room == null || _sharing) return;
+    _sharing = true;
+    try {
+      final link = DeepLink.room(room.code);
+      await SharePlus.instance.share(ShareParams(
+        subject: 'Join my Ludo room!',
+        text: 'Join my Ludo Master room\nCode: ${room.code}\n'
+            'Tap the link to open the app and jump in! $link',
+      ));
+    } catch (_) {
+    } finally {
+      _sharing = false;
+    }
+  }
+
+  Future<void> _startGame() async {
+    final room = _provider.room;
+    if (room == null || _navigating) return;
+    _navigating = true;
+    _fallback?.cancel();
     try {
       final gameRepo = di.sl<GameRepository>();
       final game =
-          await gameRepo.start(mode: 'online', roomCode: rooms.room!.code);
+          await gameRepo.start(mode: 'online', roomCode: room.code);
       if (!mounted) return;
-      _timer?.cancel();
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => OnlineGameScreen(gameId: game.id)),
       );
     } catch (e) {
+      _navigating = false;
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(e.toString())));
@@ -368,7 +428,7 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
     final myId = context.watch<AuthProvider>().user?.id ?? -1;
 
     return ChangeNotifierProvider.value(
-      value: di.sl<RoomProvider>(),
+      value: _provider,
       child: Consumer<RoomProvider>(builder: (context, rooms, _) {
         final room = rooms.room;
         final isHost = room?.hostId == myId;
@@ -386,7 +446,7 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
                       children: [
                         const CircularProgressIndicator(color: AppColors.gold),
                         const SizedBox(height: 12),
-                        Text(rooms.error ?? 'Loading room...',
+                        Text(rooms.error ?? 'Joining room...',
                             style: const TextStyle(fontSize: 13)),
                         const SizedBox(height: 14),
                         TextButton(
@@ -419,7 +479,8 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
                           ),
                           const SizedBox(height: 8),
                           Container(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 12, horizontal: 12),
                             decoration: BoxDecoration(
                               color: Colors.black26,
                               borderRadius: BorderRadius.circular(14),
@@ -435,27 +496,67 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
                                         color: Colors.white
                                             .withValues(alpha: 0.6))),
                                 const SizedBox(height: 4),
-                                GestureDetector(
-                                  onTap: () {
-                                    Clipboard.setData(
-                                        ClipboardData(text: room.code));
-                                    ScaffoldMessenger.of(context)
-                                        .showSnackBar(const SnackBar(
-                                            content:
-                                                Text('Code copied to clipboard')));
-                                  },
-                                  child: Text(
-                                    room.code,
-                                    style: const TextStyle(
-                                        fontSize: 34,
-                                        fontWeight: FontWeight.w900,
-                                        letterSpacing: 8,
-                                        color: AppColors.gold),
-                                  ),
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.center,
+                                  children: [
+                                    GestureDetector(
+                                      onTap: _copyCode,
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            room.code,
+                                            style: const TextStyle(
+                                                fontSize: 30,
+                                                fontWeight: FontWeight.w900,
+                                                letterSpacing: 8,
+                                                color: AppColors.gold),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          const Icon(Icons.copy_rounded,
+                                              size: 18, color: Colors.white70),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                                 ),
                                 const Text('tap to copy',
                                     style: TextStyle(
                                         fontSize: 10, color: Colors.white38)),
+                                const SizedBox(height: 10),
+                                GestureDetector(
+                                  onTap: _invite,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 16, vertical: 9),
+                                    decoration: BoxDecoration(
+                                      gradient: AppColors.goldGradient,
+                                      borderRadius: BorderRadius.circular(22),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: AppColors.goldDark
+                                              .withValues(alpha: 0.45),
+                                          blurRadius: 10,
+                                          offset: const Offset(0, 3),
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.ios_share,
+                                            size: 18,
+                                            color: Color(0xFF4A2C00)),
+                                        SizedBox(width: 8),
+                                        Text('Invite friends',
+                                            style: TextStyle(
+                                                fontWeight: FontWeight.w900,
+                                                color: Color(0xFF4A2C00))),
+                                      ],
+                                    ),
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -486,6 +587,7 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
                                         : p.avatar,
                                     colorName: p.color,
                                     ready: p.isReady,
+                                    pulse: isMe,
                                   );
                                 }
                                 return const _SeatCard(username: 'Waiting...');
@@ -496,14 +598,14 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
                           PrimaryButton(
                             label: isHost
                                 ? (canStart ? 'Start Game' : 'Need 2+ players')
-                                : (rooms.room!.players
-                                        .any((p) => p.userId == myId && p.isReady)
+                                : (room.players.any(
+                                        (p) => p.userId == myId && p.isReady)
                                     ? 'Not Ready'
                                     : 'Ready'),
                             onPressed: !isHost
                                 ? rooms.toggleReady
                                 : canStart
-                                    ? () => _startGame(rooms)
+                                    ? _startGame
                                     : null,
                           ),
                           const SizedBox(height: 8),
@@ -511,7 +613,7 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
                             isHost
                                 ? (canStart
                                     ? 'Everyone joined - start when ready!'
-                                    : 'Share the code and wait for players...')
+                                    : 'Invite friends with the button above!')
                                 : 'Host starts the game when everyone is set.',
                             textAlign: TextAlign.center,
                             style: TextStyle(
@@ -529,32 +631,70 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
   }
 }
 
-class _SeatCard extends StatelessWidget {
+class _SeatCard extends StatefulWidget {
   const _SeatCard({
     required this.username,
     this.avatar,
     this.colorName,
     this.ready,
+    this.pulse = false,
   });
 
   final String username;
   final String? avatar;
   final String? colorName;
   final bool? ready;
+  final bool pulse;
+
+  @override
+  State<_SeatCard> createState() => _SeatCardState();
+}
+
+class _SeatCardState extends State<_SeatCard>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 500),
+    lowerBound: 0.97,
+    upperBound: 1.03,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.pulse) _pulse.repeat(reverse: true);
+  }
+
+  @override
+  void didUpdateWidget(covariant _SeatCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.pulse && !oldWidget.pulse) {
+      _pulse.repeat(reverse: true);
+    } else if (!widget.pulse && oldWidget.pulse) {
+      _pulse.stop();
+      _pulse.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final color = colorName == null
+    final color = widget.colorName == null
         ? Colors.grey.shade700
-        : BoardColorHelper.of(colorName!);
-    return Container(
+        : BoardColorHelper.of(widget.colorName!);
+    final card = Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: Colors.black26,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: ready == true ? AppColors.gold : Colors.white24,
-          width: ready == true ? 1.6 : 1,
+          color: widget.ready == true ? AppColors.gold : Colors.white24,
+          width: widget.ready == true ? 1.6 : 1,
         ),
       ),
       child: Column(
@@ -562,10 +702,13 @@ class _SeatCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              CircleAvatar(radius: 15, backgroundColor: color, child: Text(avatar ?? '')),
+              CircleAvatar(
+                  radius: 15,
+                  backgroundColor: color,
+                  child: Text(widget.avatar ?? '')),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(username,
+                child: Text(widget.username,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -574,21 +717,25 @@ class _SeatCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 6),
-          if (ready != null)
+          if (widget.ready != null)
             Text(
-              ready! ? 'READY \u2714' : 'not ready',
+              widget.ready! ? 'READY \u2714' : 'not ready',
               style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
-                  color: ready! ? AppColors.gold : Colors.white38),
+                  color: widget.ready! ? AppColors.gold : Colors.white38),
             )
           else
             Text('- empty seat -',
                 style: TextStyle(
-                    fontSize: 11, color: Colors.white.withValues(alpha: 0.35))),
+                    fontSize: 11,
+                    color: Colors.white.withValues(alpha: 0.35))),
         ],
       ),
     );
+    return widget.pulse
+        ? ScaleTransition(scale: _pulse, child: card)
+        : card;
   }
 }
 

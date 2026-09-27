@@ -1,8 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+<<<<<<< HEAD
 import '../../core/sound/haptics.dart';
+=======
+import '../../core/network/realtime_client.dart';
+>>>>>>> 24fa8a1f77a071282b4ce0cc0689e66e3ca204c2
 import '../../core/sound/sound_manager.dart';
 import '../../data/models/room_model.dart';
 import '../../data/repositories/game_repository.dart';
@@ -10,10 +15,11 @@ import '../../game/ludo_engine.dart';
 import 'auth_provider.dart';
 
 class GameOnlineProvider extends ChangeNotifier {
-  GameOnlineProvider(this._repository, this._auth);
+  GameOnlineProvider(this._repository, this._auth, this._realtime);
 
   final GameRepository _repository;
   final AuthProvider _auth;
+  final RealtimeClient _realtime;
 
   OnlineGameModel? game;
   bool busy = false;
@@ -21,16 +27,24 @@ class GameOnlineProvider extends ChangeNotifier {
   Set<int> movable = {};
   String? lastRollLabel;
 
-  Timer? _pollTimer;
-  bool _polling = false;
-  bool _finishedNotified = false;
-  VoidCallback? onFinished;
+  /// Board tokens. While a hop animation is in flight this holds the
+  /// cell-by-cell intermediate position of the moving token(s); otherwise it
+  /// mirrors `game.tokens`.
+  Map<String, List<int>> displayTokens = {};
 
   BoardFx? boardFx;
   int _fxSeq = 0;
   Map<String, List<int>>? _prevTokens;
 
+  Timer? _hopTimer;
+  Timer? _fallsBackPoll;
+  Timer? _rollClearTimer;
+  final Set<String> _rollingColors = {};
+  List<_Hop> _hops = [];
+
   static const List<String> colorOrder = ['red', 'green', 'yellow', 'blue'];
+
+  static const int _hopIntervalMs = 125;
 
   int get myUserId => _auth.user?.id ?? -1;
 
@@ -51,56 +65,185 @@ class GameOnlineProvider extends ChangeNotifier {
   bool get canRoll =>
       isMyTurn && !busy && game?.diceValue == null && movable.isEmpty;
 
+  /// Dice panel flag: while the die is still tumbling (recent roll).
+  bool isRolling(String color) => _rollingColors.contains(color);
+
   Future<void> load(int gameId) async {
     error = null;
+    _realtime.onData = _handleFrame;
+    _realtime.connect('/api/v1/ws/game/$gameId');
     try {
       game = await _repository.get(gameId);
-      movable = {};
-      _startPolling();
+      displayTokens = _deepCopy(game!.tokens);
+      _startFallbackPolling(gameId);
     } catch (e) {
       error = e.toString();
     }
     notifyListeners();
   }
 
-  void _startPolling() {
-    _pollTimer?.cancel();
-    _pollTimer = Timer.periodic(const Duration(milliseconds: 1800), (_) async {
-      if (_polling || busy || game == null || !game!.isActive) return;
-      _polling = true;
+  /// Safety net: if the socket silently fails, a slow poll keeps the game
+  /// state converging so nobody gets stuck.
+  void _startFallbackPolling(int gameId) {
+    _fallsBackPoll?.cancel();
+    _fallsBackPoll =
+        Timer.periodic(const Duration(seconds: 6), (_) async {
       try {
-        final fresh = await _repository.get(game!.id);
-        if (fresh.status == 'active') {
-          final changed = fresh.currentTurn != game!.currentTurn ||
-              fresh.diceValue != game!.diceValue ||
-              fresh.tokens.toString() != game!.tokens.toString();
-          if (changed) {
-            // Your-turn ding like Ludo King.
-            if (fresh.currentTurn == myColor && fresh.diceValue == null) {
-              SoundManager.instance.turn();
-            }
-            game = fresh;
-            _detectFx();
-            movable = {};
-            notifyListeners();
-          }
-        } else {
-          game = fresh;
-          _detectFx();
-          movable = {};
-          notifyListeners();
-          _notifyFinishedOnce();
-        }
-      } catch (_) {
-        // Transient network errors are ignored while polling.
-      } finally {
-        _polling = false;
-      }
+        final fresh = await _repository.get(gameId);
+        _applyServerState(fresh);
+      } catch (_) {}
     });
   }
 
+<<<<<<< HEAD
   /// Detects kills / home entries by diffing the previous token snapshot, and
   /// plays the matching cue for each one.
+=======
+  Future<void> _handleFrame(String raw) async {
+    try {
+      final msg = jsonDecode(raw) as Map<String, dynamic>;
+      if (msg['kind'] != 'game' || msg['game'] == null) return;
+      final fresh = OnlineGameModel.fromJson(
+          Map<String, dynamic>.from(msg['game'] as Map));
+      _applyServerState(fresh);
+    } catch (_) {}
+  }
+
+  void _applyServerState(OnlineGameModel fresh) {
+    final old = game;
+    final hadPrevious = old != null;
+
+    if (fresh.status == 'active') {
+      final changed = fresh.currentTurn != old?.currentTurn ||
+          fresh.diceValue != old?.diceValue ||
+          fresh.tokens.toString() != old?.tokens.toString();
+      if (!changed && !_hops.isNotEmpty) return;
+
+      if (hadPrevious) {
+        _animateMoves(displayTokens, fresh.tokens);
+      } else {
+        displayTokens = _deepCopy(fresh.tokens);
+      }
+      game = fresh;
+      movable = {};
+      _detectFx();
+
+      // Remote roll: make the die visibly tumble for its owner.
+      if (fresh.diceValue != null &&
+          (old?.diceValue == null || old == null)) {
+        _markRolling(fresh.currentTurn);
+      } else if (fresh.diceValue == null) {
+        _rollingColors.clear();
+      }
+
+      if (fresh.currentTurn.toString().isNotEmpty &&
+          fresh.diceValue == null &&
+          fresh.currentTurn == myColor &&
+          old?.currentTurn != myColor) {
+        SoundManager.instance.turn();
+      }
+      notifyListeners();
+    } else {
+      game = fresh;
+      displayTokens = _deepCopy(fresh.tokens);
+      _detectFx();
+      movable = {};
+      _rollingColors.clear();
+      notifyListeners();
+      _notifyFinishedOnce();
+    }
+  }
+
+  void _markRolling(String color) {
+    _rollingColors
+      ..clear()
+      ..add(color);
+    _rollClearTimer?.cancel();
+    _rollClearTimer =
+        Timer(const Duration(milliseconds: 950), () {
+      _rollingColors.clear();
+      notifyListeners();
+    });
+  }
+
+  // --------------------------------------------------------------------
+  // Hop animation: a moved token glides over the intermediate cells, the
+  // Ludo King signature motion, for BOTH local and remote players.
+  // --------------------------------------------------------------------
+  void _animateMoves(
+      Map<String, List<int>> current, Map<String, List<int>> target) {
+    _hopTimer?.cancel();
+    _hops = [];
+
+    final hops = <_Hop>[];
+    for (final color in target.keys) {
+      final before = current[color] ?? LudoEngine.initialTokens();
+      final after = target[color]!;
+      for (var i = 0; i < after.length && i < before.length; i++) {
+        final b = before[i];
+        final a = after[i];
+        if (b == a) continue;
+        if (b == LudoEngine.basePos) {
+          // Popping out of base onto the start square.
+          hops.add(_Hop(color, i, [
+            0
+          ], fromBase: true));
+        } else if (a > b && a - b <= 6) {
+          hops.add(_Hop(color, i,
+              List<int>.generate(a - b, (k) => b + 1 + k)));
+        }
+        // else: capture/return-to-base is not hop-animated; the flame fx at
+        // the victim square sells the jump instantly (like Ludo King).
+      }
+    }
+
+    if (hops.isEmpty) {
+      displayTokens = _deepCopy(target);
+      return;
+    }
+
+    // Audible hop click for *other* people's moves (own moves sound via
+    // moveToken); this is the Ludo King cell-by-cell tick.
+    if (hops.any((h) => h.color != myColor)) {
+      SoundManager.instance.move();
+    }
+
+    // Start from wherever the board is right now.
+    displayTokens = _deepCopy(current);
+    _hops = hops;
+
+    // Gentle tick - each hop advances one cell per tick.
+    _hopTimer = Timer.periodic(
+        Duration(milliseconds: _hopIntervalMs), (_) => _tickHops(hops));
+    notifyListeners();
+  }
+
+  void _tickHops(List<_Hop> hops) {
+    if (game == null) {
+      _hopTimer?.cancel();
+      return;
+    }
+    final display = _deepCopy(game!.tokens);
+    var anyActive = false;
+    for (final h in hops) {
+      if (h.done) continue;
+      h.step += 1;
+      final cell = h.path[h.step.clamp(0, h.path.length - 1)];
+      display[h.color]![h.tokenIndex] = cell;
+      h.done = h.step >= h.path.length;
+      anyActive = true;
+    }
+    displayTokens = display;
+    if (!anyActive) {
+      _hopTimer?.cancel();
+      displayTokens = _deepCopy(game!.tokens);
+      _rollingColors.clear();
+    }
+    notifyListeners();
+  }
+
+  /// Detects kills / home entries by diffing the previous token snapshot.
+>>>>>>> 24fa8a1f77a071282b4ce0cc0689e66e3ca204c2
   void _detectFx() {
     final g = game;
     if (g == null) return;
@@ -136,10 +279,15 @@ class GameOnlineProvider extends ChangeNotifier {
 
     if (fire.isNotEmpty) {
       boardFx = BoardFx(id: ++_fxSeq, kind: FxKind.flame, spots: fire);
+<<<<<<< HEAD
       SoundManager.instance.capture();
       Haptics.instance.heavy();
+=======
+      if ((fire.first.color) != myColor) SoundManager.instance.capture();
+>>>>>>> 24fa8a1f77a071282b4ce0cc0689e66e3ca204c2
     } else if (sparkle.isNotEmpty) {
       boardFx = BoardFx(id: ++_fxSeq, kind: FxKind.sparkle, spots: sparkle);
+      if ((sparkle.first.color) != myColor) SoundManager.instance.home();
     }
     if (released) SoundManager.instance.release();
     if (reachedHome) {
@@ -148,10 +296,14 @@ class GameOnlineProvider extends ChangeNotifier {
     }
   }
 
+  bool _finishedNotified = false;
+  VoidCallback? onFinished;
+
   void _notifyFinishedOnce() {
     if (_finishedNotified) return;
     _finishedNotified = true;
-    _pollTimer?.cancel();
+    _fallsBackPoll?.cancel();
+    _realtime.disconnect();
     if (game?.winnerId != null && game!.winnerId == myUserId) {
       SoundManager.instance.win();
     } else {
@@ -174,7 +326,9 @@ class GameOnlineProvider extends ChangeNotifier {
       await Future<void>.delayed(const Duration(milliseconds: 130));
       await _repository.roll(game!.id);
       game = await _repository.get(game!.id);
+      displayTokens = _deepCopy(game!.tokens);
       _detectFx();
+      _markRolling(myColor ?? '');
       SoundManager.instance.diceRoll();
       Haptics.instance.medium();
       final color = myColor;
@@ -209,6 +363,7 @@ class GameOnlineProvider extends ChangeNotifier {
       SoundManager.instance.move();
       Haptics.instance.light();
       movable = {};
+      displayTokens = _deepCopy(game!.tokens);
       if (!game!.isActive) _notifyFinishedOnce();
     } catch (e) {
       error = e.toString();
@@ -269,12 +424,30 @@ class GameOnlineProvider extends ChangeNotifier {
   int tokensHomeOf(String color) =>
       LudoEngine.tokensHome(game?.tokens[color] ?? const []);
 
+  Map<String, List<int>> _deepCopy(Map<String, List<int>> src) => {
+        for (final e in src.entries) e.key: List<int>.of(e.value),
+      };
+
   String _capitalize(String s) =>
       s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 
   @override
   void dispose() {
-    _pollTimer?.cancel();
+    _hopTimer?.cancel();
+    _fallsBackPoll?.cancel();
+    _rollClearTimer?.cancel();
+    _realtime.disconnect();
     super.dispose();
   }
+}
+
+class _Hop {
+  _Hop(this.color, this.tokenIndex, this.path, {this.fromBase = false});
+
+  final String color;
+  final int tokenIndex;
+  final List<int> path;
+  final bool fromBase;
+  int step = -1;
+  bool done = false;
 }

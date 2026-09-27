@@ -137,6 +137,53 @@ class _OnlineGameScreenState extends State<OnlineGameScreen> {
     return 'red';
   }
 
+<<<<<<< HEAD
+=======
+  /// One board-edge slot; renders that colour's own dice panel if seated.
+  Widget _cornerSlot(GameOnlineProvider provider, String color,
+      {required bool alignRight}) {
+    final game = provider.game;
+    if (game == null || !provider.activeColors.contains(color)) {
+      return const SizedBox.expand();
+    }
+    final active = game.currentTurn == color;
+    final waiting = game.diceValue == null;
+    final mine = color == provider.myColor;
+    return Align(
+      alignment:
+          alignRight ? Alignment.centerRight : Alignment.centerLeft,
+      child: PlayerDicePanel(
+        colorName: color,
+        name: provider.nameOf(color),
+        avatar: provider.avatarOf(color),
+        tokensHome: provider.tokensHomeOf(color),
+        active: active,
+        glowing: active && waiting && !provider.busy && !mine,
+        diceValue: game.diceValue ?? 1,
+        rolling: provider.isRolling(color),
+        canRoll: provider.canRoll && mine,
+        onRollTap: provider.rollDice,
+      ),
+    );
+  }
+
+  Widget _cornerRow(GameOnlineProvider provider,
+      {required String left, required String right}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      child: SizedBox(
+        height: 78,
+        child: Row(
+          children: [
+            Expanded(child: _cornerSlot(provider, left, alignRight: false)),
+            Expanded(child: _cornerSlot(provider, right, alignRight: true)),
+          ],
+        ),
+      ),
+    );
+  }
+
+>>>>>>> 24fa8a1f77a071282b4ce0cc0689e66e3ca204c2
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider.value(
@@ -145,6 +192,7 @@ class _OnlineGameScreenState extends State<OnlineGameScreen> {
         builder: (context, provider, _) {
           final game = provider.game;
 
+<<<<<<< HEAD
           return BannerHost(
             key: _banners,
             child: Stack(
@@ -187,6 +235,128 @@ class _OnlineGameScreenState extends State<OnlineGameScreen> {
                     ),
                   ),
               ],
+=======
+          return Scaffold(
+            body: Container(
+              decoration:
+                  const BoxDecoration(gradient: AppColors.backgroundGradient),
+              child: SafeArea(
+                child: game == null
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const CircularProgressIndicator(
+                                color: AppColors.gold),
+                            const SizedBox(height: 12),
+                            Text(provider.error ?? 'Loading game...',
+                                style: const TextStyle(fontSize: 13)),
+                          ],
+                        ),
+                      )
+                    : Column(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 8),
+                            child: Row(
+                              children: [
+                                IconButton(
+                                  onPressed: () =>
+                                      Navigator.of(context).pop(),
+                                  icon: const Icon(Icons.arrow_back_ios_new,
+                                      color: Colors.white),
+                                ),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text(
+                                    'Room ${game.id} - ${game.status}',
+                                    style: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700),
+                                  ),
+                                ),
+                                if (game.isActive && game.diceValue == null)
+                                  Container(
+                                    margin: const EdgeInsets.only(right: 8),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: _secondsLeft <= 5
+                                          ? Colors.red.withValues(alpha: 0.25)
+                                          : Colors.black26,
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: _secondsLeft <= 5
+                                            ? Colors.redAccent
+                                            : Colors.white24,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      '\u23F1 ${_secondsLeft}s',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w800,
+                                        color: _secondsLeft <= 5
+                                            ? Colors.redAccent
+                                            : Colors.white70,
+                                      ),
+                                    ),
+                                  ),
+                                const SizedBox(width: 4),
+                                const SoundToggle(),
+                                Text(
+                                  'You: ${provider.myColor ?? '-'}',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      color: provider.myColor == null
+                                          ? Colors.white54
+                                          : BoardPainter.colorOf(
+                                              provider.myColor!)),
+                                ),
+                              ],
+                            ),
+                          ),
+                          _YourTurnBanner(
+                            show: provider.isMyTurn &&
+                                game.diceValue == null &&
+                                !provider.busy,
+                          ),
+                          Expanded(
+                            flex: 7,
+                            child: Column(
+                              children: [
+                                // Ludo King layout: each player's own dice
+                                // beside their base corner of the board.
+                                _cornerRow(provider,
+                                    left: 'red', right: 'green'),
+                                Expanded(
+                                  child: Center(
+                                    child: AspectRatio(
+                                      aspectRatio: 1,
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(4),
+                                        child: BoardView(
+                                          tokens: provider.displayTokens,
+                                          currentColor: game.currentTurn,
+                                          movable: provider.movableForMe,
+                                          boardFx: provider.boardFx,
+                                          onTokenTap: (_, index) =>
+                                              provider.moveToken(index),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                _cornerRow(provider,
+                                    left: 'blue', right: 'yellow'),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+>>>>>>> 24fa8a1f77a071282b4ce0cc0689e66e3ca204c2
             ),
           );
         },
@@ -310,6 +480,89 @@ class _OnlineGameScreenState extends State<OnlineGameScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Ludo King style pulsing "YOUR TURN" callout above the board.
+class _YourTurnBanner extends StatefulWidget {
+  const _YourTurnBanner({required this.show});
+
+  final bool show;
+
+  @override
+  State<_YourTurnBanner> createState() => _YourTurnBannerState();
+}
+
+class _YourTurnBannerState extends State<_YourTurnBanner>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 450),
+    lowerBound: 0.94,
+    upperBound: 1.06,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.show) _pulse.repeat(reverse: true);
+  }
+
+  @override
+  void didUpdateWidget(covariant _YourTurnBanner oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.show && !oldWidget.show) {
+      _pulse.repeat(reverse: true);
+    } else if (!widget.show && oldWidget.show) {
+      _pulse.stop();
+      _pulse.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 200),
+      child: widget.show
+          ? Container(
+              key: const ValueKey('yourturn'),
+              margin: const EdgeInsets.symmetric(horizontal: 12),
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                gradient: AppColors.goldGradient,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.goldDark.withValues(alpha: 0.5),
+                    blurRadius: 12,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: ScaleTransition(
+                scale: _pulse,
+                child: const Text(
+                  'YOUR TURN - ROLL!',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.5,
+                    color: Color(0xFF4A2C00),
+                  ),
+                ),
+              ),
+            )
+          : const SizedBox.shrink(
+              key: ValueKey('none'),
+            ),
     );
   }
 }
