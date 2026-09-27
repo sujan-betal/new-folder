@@ -32,6 +32,9 @@ class DiceWidget extends StatefulWidget {
 
 class _DiceWidgetState extends State<DiceWidget>
     with SingleTickerProviderStateMixin {
+  /// Die width as a fraction of the tray diameter.
+  static const double _cubeFill = 0.66;
+
   // Multi-phase animation: 1000ms total
   // Phase 1 (0 - 0.65): fast tumbling
   // Phase 2 (0.65 - 0.82): decelerating
@@ -206,7 +209,9 @@ class _DiceWidgetState extends State<DiceWidget>
             lift = _liftAnim.value * widget.size * 0.25;
           }
 
-          final cubeSize = widget.size * (rollingNow ? scale : 1.0);
+          // The die sits inside the coloured tray rather than filling it -
+          // at full size the tray reads as a thin ring instead of a disc.
+          final cubeSize = widget.size * _cubeFill * (rollingNow ? scale : 1.0);
 
           final cube = _Cube(
             size: cubeSize,
@@ -214,6 +219,7 @@ class _DiceWidgetState extends State<DiceWidget>
             pipColor: Colors.black87,
             tilt: tilt,
             lift: lift,
+            liftT: _liftAnim.value,
             rolling: rollingNow,
           );
 
@@ -262,7 +268,7 @@ class _DiceWidgetState extends State<DiceWidget>
   int _targetOrDisplay() => widget.value > 0 ? widget.value : _displayValue;
 }
 
-/// Colored circular holder under the dice, Ludo King tray style.
+/// Colored circular holder under the dice, tray style.
 class _Tray extends StatelessWidget {
   const _Tray({required this.color, required this.child});
 
@@ -275,24 +281,25 @@ class _Tray extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: RadialGradient(
+          center: const Alignment(-0.25, -0.3),
           colors: [
-            Color.lerp(color, Colors.white, 0.32)!,
+            Color.lerp(color, Colors.white, 0.42)!,
             color,
-            Color.lerp(color, Colors.black, 0.40)!,
+            Color.lerp(color, Colors.black, 0.48)!,
           ],
-          stops: const [0.0, 0.58, 1.0],
+          stops: const [0.0, 0.55, 1.0],
         ),
-        border: Border.all(
-            color: Colors.white.withValues(alpha: 0.88), width: 2.5),
+        border:
+            Border.all(color: Colors.white.withValues(alpha: 0.9), width: 3),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.40),
-            blurRadius: 12,
-            offset: const Offset(0, 5),
+            color: Colors.black.withValues(alpha: 0.45),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
           ),
           BoxShadow(
-            color: color.withValues(alpha: 0.35),
-            blurRadius: 18,
+            color: color.withValues(alpha: 0.4),
+            blurRadius: 20,
             spreadRadius: 2,
           ),
         ],
@@ -311,6 +318,7 @@ class _Cube extends StatelessWidget {
     required this.pipColor,
     required this.tilt,
     required this.lift,
+    required this.liftT,
     required this.rolling,
   });
 
@@ -319,79 +327,128 @@ class _Cube extends StatelessWidget {
   final Color pipColor;
   final double tilt;
   final double lift;
+
+  /// Normalised 0 (resting) .. 1 (top of the arc) height above the tray.
+  final double liftT;
   final bool rolling;
 
   @override
   Widget build(BuildContext context) {
-    return Transform.rotate(
-      angle: tilt,
-      child: AnimatedContainer(
-        duration: rolling
-            ? Duration.zero
-            : const Duration(milliseconds: 200),
-        curve: Curves.easeOutBack,
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(size * 0.22),
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Colors.white,
-              Color(0xFFF8F8F8),
-              Color(0xFFE8E8E8),
-              Color(0xFFD0D0D0),
-            ],
-            stops: [0.0, 0.35, 0.72, 1.0],
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        // Contact shadow on the tray: tightens as the die settles, spreads
+        // as it flies up mid-roll.
+        Positioned(
+          bottom: -size * 0.06,
+          child: Container(
+            width: size * (1.05 - liftT * 0.30),
+            height: size * (0.30 - liftT * 0.10),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  Colors.black.withValues(alpha: 0.42 - liftT * 0.24),
+                  Colors.black.withValues(alpha: 0.0),
+                ],
+              ),
+            ),
           ),
-          border: Border.all(color: const Color(0xFFAAAAAA), width: 1.2),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.35),
-              blurRadius: 10 + (rolling ? 4 : 0),
-              offset: Offset(0, 5 + lift * 0.3),
-              spreadRadius: rolling ? 1 : 0,
-            ),
-            // Subtle inner highlight
-            BoxShadow(
-              color: Colors.white.withValues(alpha: 0.6),
-              blurRadius: 2,
-              offset: const Offset(-1, -1),
-              spreadRadius: -1,
-            ),
-          ],
         ),
-        child: Stack(
-          children: [
-            // Top-left sheen
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(size * 0.22),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment(0.6, 0.6),
-                    stops: const [0.0, 0.5],
-                    colors: [
-                      Colors.white.withValues(alpha: 0.9),
-                      Colors.white.withValues(alpha: 0.0),
-                    ],
+        Transform.rotate(
+          angle: tilt,
+          child: AnimatedContainer(
+            duration:
+                rolling ? Duration.zero : const Duration(milliseconds: 200),
+            curve: Curves.easeOutBack,
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(size * 0.24),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white,
+                  Color(0xFFFAFAFA),
+                  Color(0xFFECECEC),
+                  Color(0xFFCFCFCF),
+                ],
+                stops: [0.0, 0.34, 0.7, 1.0],
+              ),
+              border: Border.all(color: const Color(0xFF2B2B2B), width: 2.0),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.38),
+                  blurRadius: 10 + (rolling ? 5 : 0),
+                  offset: Offset(0, 5 + lift * 0.3),
+                  spreadRadius: rolling ? 1 : 0,
+                ),
+              ],
+            ),
+            child: Stack(
+              children: [
+                // Bevel: bright top-left arc, shaded bottom-right arc.
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(size * 0.24),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment(0.6, 0.6),
+                        stops: const [0.0, 0.5],
+                        colors: [
+                          Colors.white.withValues(alpha: 0.95),
+                          Colors.white.withValues(alpha: 0.0),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
-              ),
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(size * 0.24),
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomRight,
+                        end: Alignment(-0.6, -0.6),
+                        stops: const [0.0, 0.5],
+                        colors: [
+                          Colors.black.withValues(alpha: 0.16),
+                          Colors.black.withValues(alpha: 0.0),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                // Inset rim, so the face reads as pressed rather than flat.
+                Positioned.fill(
+                  child: Padding(
+                    padding: EdgeInsets.all(size * 0.06),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(size * 0.19),
+                        border: Border.all(
+                          color: const Color(0xFFCFCFCF),
+                          width: 1.0,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // Pip face.
+                Padding(
+                  padding: EdgeInsets.all(size * 0.10),
+                  child: CustomPaint(
+                    size: Size(size * 0.80, size * 0.80),
+                    painter: _DiceFacePainter(value: value, color: pipColor),
+                  ),
+                ),
+              ],
             ),
-            // Pip face
-            Padding(
-              padding: EdgeInsets.all(size * 0.12),
-              child: CustomPaint(
-                size: Size(size * 0.76, size * 0.76),
-                painter: _DiceFacePainter(value: value, color: pipColor),
-              ),
-            ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -402,16 +459,16 @@ class _DiceFacePainter extends CustomPainter {
   final int value;
   final Color color;
 
-  // Wider pip spacing for better visibility
+  // Wider pip spacing so six pips stay distinct, and pulled in from the edge.
   static const Map<int, List<Offset>> _pips = {
     1: [Offset(0.5, 0.5)],
-    2: [Offset(0.25, 0.25), Offset(0.75, 0.75)],
+    2: [Offset(0.26, 0.26), Offset(0.74, 0.74)],
     3: [Offset(0.25, 0.25), Offset(0.5, 0.5), Offset(0.75, 0.75)],
     4: [
-      Offset(0.25, 0.25),
-      Offset(0.75, 0.25),
-      Offset(0.25, 0.75),
-      Offset(0.75, 0.75),
+      Offset(0.26, 0.26),
+      Offset(0.74, 0.26),
+      Offset(0.26, 0.74),
+      Offset(0.74, 0.74),
     ],
     5: [
       Offset(0.25, 0.25),
@@ -421,50 +478,46 @@ class _DiceFacePainter extends CustomPainter {
       Offset(0.75, 0.75),
     ],
     6: [
-      Offset(0.25, 0.22),
-      Offset(0.75, 0.22),
+      Offset(0.25, 0.20),
+      Offset(0.75, 0.20),
       Offset(0.25, 0.5),
       Offset(0.75, 0.5),
-      Offset(0.25, 0.78),
-      Offset(0.75, 0.78),
+      Offset(0.25, 0.80),
+      Offset(0.75, 0.80),
     ],
   };
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Larger pips for visibility
-    final r = size.shortestSide * 0.125;
+    // Big, fat pips - LK's die reads instantly at a glance on a phone.
+    final r = size.shortestSide * 0.145;
     for (final pip in _pips[value] ?? const <Offset>[]) {
       final c = Offset(pip.dx * size.width, pip.dy * size.height);
       // Drop shadow under pip
       canvas.drawCircle(
-        c.translate(r * 0.15, r * 0.20),
-        r * 1.05,
+        c.translate(r * 0.12, r * 0.18),
+        r * 1.02,
         Paint()
-          ..color = Colors.black.withValues(alpha: 0.15)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.0),
+          ..color = Colors.black.withValues(alpha: 0.22)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, r * 0.22),
       );
       // Pip body - dark and bold
       canvas.drawCircle(
         c,
         r,
         Paint()
-          ..shader = RadialGradient(
-            center: const Alignment(-0.3, -0.3),
-            radius: 1.1,
-            colors: [
-              const Color(0xFF444444),
-              const Color(0xFF1A1A1A),
-              Colors.black,
-            ],
-            stops: const [0.0, 0.5, 1.0],
+          ..shader = const RadialGradient(
+            center: Alignment(-0.3, -0.3),
+            radius: 1.2,
+            colors: [Color(0xFF4A4A4A), Color(0xFF1A1A1A), Color(0xFF000000)],
+            stops: [0.0, 0.5, 1.0],
           ).createShader(Rect.fromCircle(center: c, radius: r)),
       );
       // Specular highlight
       canvas.drawCircle(
         c.translate(-r * 0.30, -r * 0.32),
-        r * 0.25,
-        Paint()..color = Colors.white.withValues(alpha: 0.65),
+        r * 0.30,
+        Paint()..color = Colors.white.withValues(alpha: 0.55),
       );
     }
   }

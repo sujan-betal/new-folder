@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../core/sound/haptics.dart';
 import '../../core/sound/sound_manager.dart';
 import '../../data/models/room_model.dart';
 import '../../data/repositories/game_repository.dart';
@@ -35,8 +36,7 @@ class GameOnlineProvider extends ChangeNotifier {
 
   Map<String, dynamic>? get myParticipant {
     for (final p in game?.participants ?? const []) {
-      if ((p['user_id'] as num?)?.toInt() == myUserId &&
-          p['is_bot'] != true) {
+      if ((p['user_id'] as num?)?.toInt() == myUserId && p['is_bot'] != true) {
         return p;
       }
     }
@@ -99,7 +99,8 @@ class GameOnlineProvider extends ChangeNotifier {
     });
   }
 
-  /// Detects kills / home entries by diffing the previous token snapshot.
+  /// Detects kills / home entries by diffing the previous token snapshot, and
+  /// plays the matching cue for each one.
   void _detectFx() {
     final g = game;
     if (g == null) return;
@@ -111,6 +112,8 @@ class GameOnlineProvider extends ChangeNotifier {
 
     final fire = <FxSpot>[];
     final sparkle = <FxSpot>[];
+    var released = false;
+    var reachedHome = false;
     prev.forEach((color, before) {
       final after = g.tokens[color];
       if (after == null) return;
@@ -121,18 +124,27 @@ class GameOnlineProvider extends ChangeNotifier {
             was <= LudoEngine.trackEnd &&
             now == LudoEngine.basePos) {
           fire.add(FxSpot(color: color, tokenIndex: i, pos: was));
-        } else if (was != LudoEngine.homeDone &&
-            now == LudoEngine.homeDone) {
+        } else if (was == LudoEngine.basePos && now >= 0) {
+          released = true;
+        } else if (was != LudoEngine.homeDone && now == LudoEngine.homeDone) {
           sparkle.add(
               FxSpot(color: color, tokenIndex: i, pos: LudoEngine.homeDone));
+          reachedHome = true;
         }
       }
     });
 
     if (fire.isNotEmpty) {
       boardFx = BoardFx(id: ++_fxSeq, kind: FxKind.flame, spots: fire);
+      SoundManager.instance.capture();
+      Haptics.instance.heavy();
     } else if (sparkle.isNotEmpty) {
       boardFx = BoardFx(id: ++_fxSeq, kind: FxKind.sparkle, spots: sparkle);
+    }
+    if (released) SoundManager.instance.release();
+    if (reachedHome) {
+      SoundManager.instance.home();
+      Haptics.instance.success();
     }
   }
 
@@ -142,23 +154,36 @@ class GameOnlineProvider extends ChangeNotifier {
     _pollTimer?.cancel();
     if (game?.winnerId != null && game!.winnerId == myUserId) {
       SoundManager.instance.win();
+    } else {
+      SoundManager.instance.lose();
     }
     onFinished?.call();
   }
 
   Future<void> rollDice() async {
-    if (!canRoll || game == null) return;
+    if (!canRoll || game == null) {
+      SoundManager.instance.invalid();
+      Haptics.instance.error();
+      return;
+    }
     busy = true;
     error = null;
     notifyListeners();
     try {
+      SoundManager.instance.diceThrow();
+      await Future<void>.delayed(const Duration(milliseconds: 130));
       await _repository.roll(game!.id);
       game = await _repository.get(game!.id);
       _detectFx();
       SoundManager.instance.diceRoll();
+      Haptics.instance.medium();
       final color = myColor;
       lastRollLabel =
           '${_capitalize(color ?? '')} rolled ${game!.diceValue ?? '?'}';
+      if (game!.diceValue == 6) {
+        SoundManager.instance.six();
+        Haptics.instance.success();
+      }
     } catch (e) {
       error = e.toString();
     } finally {
@@ -169,7 +194,11 @@ class GameOnlineProvider extends ChangeNotifier {
 
   Future<void> moveToken(int tokenIndex) async {
     final allowed = computeMovableForMe();
-    if (game == null || busy || !allowed.contains(tokenIndex)) return;
+    if (game == null || busy || !allowed.contains(tokenIndex)) {
+      SoundManager.instance.invalid();
+      Haptics.instance.error();
+      return;
+    }
     busy = true;
     error = null;
     notifyListeners();
@@ -178,6 +207,7 @@ class GameOnlineProvider extends ChangeNotifier {
       game = await _repository.get(game!.id);
       _detectFx();
       SoundManager.instance.move();
+      Haptics.instance.light();
       movable = {};
       if (!game!.isActive) _notifyFinishedOnce();
     } catch (e) {
@@ -231,8 +261,8 @@ class GameOnlineProvider extends ChangeNotifier {
 
   List<String> get activeColors {
     final colors = game?.tokens.keys.toList() ?? [];
-    colors.sort(
-        (a, b) => colorOrder.indexOf(a).compareTo(colorOrder.indexOf(b)));
+    colors
+        .sort((a, b) => colorOrder.indexOf(a).compareTo(colorOrder.indexOf(b)));
     return colors;
   }
 

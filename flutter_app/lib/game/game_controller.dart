@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
+import '../core/sound/haptics.dart';
 import '../core/sound/sound_manager.dart';
 import 'board_geometry.dart';
 import 'ludo_ai.dart';
@@ -64,19 +65,31 @@ class GameController extends ChangeNotifier {
     await _maybeCpuTurn();
   }
 
+  /// Tapping the dice always answers: if the roll is not allowed yet the
+  /// player gets the "not yet" cue instead of silence.
   Future<void> roll() async {
-    if (phase != GamePhase.awaitingRoll) return;
+    if (phase != GamePhase.awaitingRoll) {
+      SoundManager.instance.invalid();
+      Haptics.instance.error();
+      return;
+    }
     await _doRoll();
   }
 
   Future<void> _doRoll() async {
     final gen = ++_generation;
     phase = GamePhase.rolling;
-    SoundManager.instance.diceRoll();
-    notifyListeners();
 
-    // Wait for dice animation to settle (1000ms total animation)
-    await Future<void>.delayed(const Duration(milliseconds: 850));
+    // Shake, then throw - the rattle lands right as the dice start tumbling.
+    SoundManager.instance.diceThrow();
+    Haptics.instance.medium();
+    notifyListeners();
+    await Future<void>.delayed(const Duration(milliseconds: 130));
+    if (!_alive(gen)) return;
+    SoundManager.instance.diceRoll();
+
+    // Wait for the dice animation to settle (~1000ms total animation)
+    await Future<void>.delayed(const Duration(milliseconds: 900));
     if (!_alive(gen)) return;
 
     final value = _random.nextInt(6) + 1;
@@ -88,25 +101,31 @@ class GameController extends ChangeNotifier {
 
     if (value == 6) {
       _sixStreak += 1;
+      SoundManager.instance.six();
+      Haptics.instance.success();
     } else {
       _sixStreak = 0;
     }
 
     if (_sixStreak >= 3) {
       _sixStreak = 0;
+      SoundManager.instance.invalid();
+      Haptics.instance.error();
       onEvent?.call('Three sixes in a row - turn skipped!');
       notifyListeners();
-      await Future<void>.delayed(const Duration(milliseconds: 700));
+      await Future<void>.delayed(const Duration(milliseconds: 900));
       if (!_alive(gen)) return;
       await _passTurn(gen);
       return;
     }
 
     if (targets.every((t) => t == null)) {
+      SoundManager.instance.invalid();
+      Haptics.instance.error();
       onEvent?.call(
           '${_label(color)} rolled $value - no move available');
       notifyListeners();
-      await Future<void>.delayed(const Duration(milliseconds: 800));
+      await Future<void>.delayed(const Duration(milliseconds: 900));
       if (!_alive(gen)) return;
       await _passTurn(gen);
       return;
@@ -135,7 +154,11 @@ class GameController extends ChangeNotifier {
   }
 
   Future<void> moveToken(int tokenIndex) async {
-    if (phase != GamePhase.choosingMove || !movable.contains(tokenIndex)) return;
+    if (phase != GamePhase.choosingMove || !movable.contains(tokenIndex)) {
+      SoundManager.instance.invalid();
+      Haptics.instance.error();
+      return;
+    }
     final gen = _generation;
     final color = _current;
     final value = diceValue!;
@@ -145,15 +168,26 @@ class GameController extends ChangeNotifier {
 
     // ---- Ludo King style: hop cell by cell with a click each step. ----
     final start = tokens[color]![tokenIndex];
-    var target = start == LudoEngine.basePos ? 0 : start + value;
+    final fromBase = start == LudoEngine.basePos;
+    if (fromBase) {
+      // Leaving the yard gets its own scoop-and-clack rather than a tock.
+      SoundManager.instance.release();
+      Haptics.instance.heavy();
+    }
+    var target = fromBase ? 0 : start + value;
     if (target > LudoEngine.homeDone) target = LudoEngine.homeDone;
-    for (var pos = (start == LudoEngine.basePos ? -1 : start) + 1;
+    for (var pos = (fromBase ? -1 : start) + 1;
         pos <= target;
         pos++) {
       tokens[color]![tokenIndex] = pos;
-      SoundManager.instance.move();
+      if (!fromBase || pos > 0) {
+        SoundManager.instance.move();
+        // Buzz once per move, not once per cell - a tick on every step would
+        // turn a long roll into a buzzsaw.
+        if (pos == (fromBase ? 1 : start + 1)) Haptics.instance.light();
+      }
       notifyListeners();
-      await Future<void>.delayed(const Duration(milliseconds: 85));
+      await Future<void>.delayed(const Duration(milliseconds: 105));
       if (!_alive(gen)) return;
     }
 
@@ -183,6 +217,7 @@ class GameController extends ChangeNotifier {
 
     if (result.captured) {
       SoundManager.instance.capture();
+      Haptics.instance.heavy();
       for (final victim in result.capturedColors) {
         onEvent?.call(
             '${_label(color)} captured ${_label(victim)}! Extra turn');
@@ -190,6 +225,7 @@ class GameController extends ChangeNotifier {
     }
     if (result.reachedHome) {
       SoundManager.instance.home();
+      Haptics.instance.success();
       onEvent?.call('${_label(color)} sent a token home! Extra turn');
     } else {
       final landedAbs =
@@ -207,6 +243,7 @@ class GameController extends ChangeNotifier {
       winnerColor ??= color;
       phase = GamePhase.finished;
       SoundManager.instance.win();
+      Haptics.instance.success();
       notifyListeners();
       return;
     }
@@ -229,6 +266,7 @@ class GameController extends ChangeNotifier {
     _advanceToNextActive();
     phase = GamePhase.awaitingRoll;
     SoundManager.instance.turn();
+    Haptics.instance.light();
     notifyListeners();
     await _maybeCpuTurn();
   }

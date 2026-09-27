@@ -30,6 +30,18 @@ class LudoEngine {
   static bool hasAnyMove(List<int> tokens, int dice) =>
       legalTargets(tokens, dice).any((t) => t != null);
 
+  /// Relative board positions the given tokens would land on, so the UI can
+  /// ring the destination squares the way a player reads a ludo board.
+  static Set<int> landingPositions(List<int> tokens, int dice) {
+    final out = <int>{};
+    for (final p in tokens) {
+      if (p == homeDone) continue;
+      final target = p == basePos ? 0 : p + dice;
+      if (target <= homeDone) out.add(target);
+    }
+    return out;
+  }
+
   static MoveResult applyMove(
     Map<String, List<int>> allTokens,
     String color,
@@ -47,7 +59,8 @@ class LudoEngine {
     final victims = <CapturedToken>[];
     var captured = false;
 
-    final abs = target <= trackEnd ? BoardGeometry.absoluteSquare(color, target) : -1;
+    final abs =
+        target <= trackEnd ? BoardGeometry.absoluteSquare(color, target) : -1;
     if (abs >= 0 && !BoardGeometry.safeSquares.contains(abs)) {
       for (final other in BoardGeometry.colors) {
         if (other == color || !allTokens.containsKey(other)) continue;
@@ -77,7 +90,8 @@ class LudoEngine {
     );
   }
 
-  static bool isFinished(List<int> tokens) => tokens.every((p) => p == homeDone);
+  static bool isFinished(List<int> tokens) =>
+      tokens.every((p) => p == homeDone);
 
   /// Capture/finish resolution for a token that has ALREADY been moved
   /// (animated step by step) to [finalPos].
@@ -90,8 +104,9 @@ class LudoEngine {
     final victims = <CapturedToken>[];
     var captured = false;
 
-    final abs =
-        finalPos <= trackEnd ? BoardGeometry.absoluteSquare(color, finalPos) : -1;
+    final abs = finalPos <= trackEnd
+        ? BoardGeometry.absoluteSquare(color, finalPos)
+        : -1;
     if (abs >= 0 && !BoardGeometry.safeSquares.contains(abs)) {
       for (final other in BoardGeometry.colors) {
         if (other == color || !allTokens.containsKey(other)) continue;
