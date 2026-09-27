@@ -3,11 +3,8 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
-<<<<<<< HEAD
-import '../../core/sound/haptics.dart';
-=======
 import '../../core/network/realtime_client.dart';
->>>>>>> 24fa8a1f77a071282b4ce0cc0689e66e3ca204c2
+import '../../core/sound/haptics.dart';
 import '../../core/sound/sound_manager.dart';
 import '../../data/models/room_model.dart';
 import '../../data/repositories/game_repository.dart';
@@ -86,8 +83,7 @@ class GameOnlineProvider extends ChangeNotifier {
   /// state converging so nobody gets stuck.
   void _startFallbackPolling(int gameId) {
     _fallsBackPoll?.cancel();
-    _fallsBackPoll =
-        Timer.periodic(const Duration(seconds: 6), (_) async {
+    _fallsBackPoll = Timer.periodic(const Duration(seconds: 6), (_) async {
       try {
         final fresh = await _repository.get(gameId);
         _applyServerState(fresh);
@@ -95,10 +91,6 @@ class GameOnlineProvider extends ChangeNotifier {
     });
   }
 
-<<<<<<< HEAD
-  /// Detects kills / home entries by diffing the previous token snapshot, and
-  /// plays the matching cue for each one.
-=======
   Future<void> _handleFrame(String raw) async {
     try {
       final msg = jsonDecode(raw) as Map<String, dynamic>;
@@ -129,8 +121,7 @@ class GameOnlineProvider extends ChangeNotifier {
       _detectFx();
 
       // Remote roll: make the die visibly tumble for its owner.
-      if (fresh.diceValue != null &&
-          (old?.diceValue == null || old == null)) {
+      if (fresh.diceValue != null && (old?.diceValue == null || old == null)) {
         _markRolling(fresh.currentTurn);
       } else if (fresh.diceValue == null) {
         _rollingColors.clear();
@@ -159,8 +150,7 @@ class GameOnlineProvider extends ChangeNotifier {
       ..clear()
       ..add(color);
     _rollClearTimer?.cancel();
-    _rollClearTimer =
-        Timer(const Duration(milliseconds: 950), () {
+    _rollClearTimer = Timer(const Duration(milliseconds: 950), () {
       _rollingColors.clear();
       notifyListeners();
     });
@@ -185,12 +175,9 @@ class GameOnlineProvider extends ChangeNotifier {
         if (b == a) continue;
         if (b == LudoEngine.basePos) {
           // Popping out of base onto the start square.
-          hops.add(_Hop(color, i, [
-            0
-          ], fromBase: true));
+          hops.add(_Hop(color, i, [0], fromBase: true));
         } else if (a > b && a - b <= 6) {
-          hops.add(_Hop(color, i,
-              List<int>.generate(a - b, (k) => b + 1 + k)));
+          hops.add(_Hop(color, i, List<int>.generate(a - b, (k) => b + 1 + k)));
         }
         // else: capture/return-to-base is not hop-animated; the flame fx at
         // the victim square sells the jump instantly (like Ludo King).
@@ -243,7 +230,6 @@ class GameOnlineProvider extends ChangeNotifier {
   }
 
   /// Detects kills / home entries by diffing the previous token snapshot.
->>>>>>> 24fa8a1f77a071282b4ce0cc0689e66e3ca204c2
   void _detectFx() {
     final g = game;
     if (g == null) return;
@@ -279,12 +265,8 @@ class GameOnlineProvider extends ChangeNotifier {
 
     if (fire.isNotEmpty) {
       boardFx = BoardFx(id: ++_fxSeq, kind: FxKind.flame, spots: fire);
-<<<<<<< HEAD
-      SoundManager.instance.capture();
-      Haptics.instance.heavy();
-=======
       if ((fire.first.color) != myColor) SoundManager.instance.capture();
->>>>>>> 24fa8a1f77a071282b4ce0cc0689e66e3ca204c2
+      Haptics.instance.heavy();
     } else if (sparkle.isNotEmpty) {
       boardFx = BoardFx(id: ++_fxSeq, kind: FxKind.sparkle, spots: sparkle);
       if ((sparkle.first.color) != myColor) SoundManager.instance.home();

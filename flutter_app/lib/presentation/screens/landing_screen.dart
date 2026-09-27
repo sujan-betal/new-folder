@@ -17,6 +17,7 @@ import '../widgets/logo_widget.dart';
 import '../widgets/menu_button.dart';
 import '../widgets/stat_chip.dart';
 import 'auth/login_screen.dart';
+import 'game/color_pick_screen.dart';
 import 'game/local_game_screen.dart';
 
 class LandingScreen extends StatefulWidget {
@@ -71,7 +72,8 @@ class _LandingScreenState extends State<LandingScreen>
   }
 
   void _snack(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   Widget _bubble(double size, Color color) {
@@ -124,8 +126,7 @@ class _LandingScreenState extends State<LandingScreen>
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 14, vertical: 8),
                                 decoration: BoxDecoration(
-                                  color:
-                                      AppColors.gold.withValues(alpha: 0.15),
+                                  color: AppColors.gold.withValues(alpha: 0.15),
                                   borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
                                       color: AppColors.gold
@@ -177,21 +178,23 @@ class _LandingScreenState extends State<LandingScreen>
                                 MenuButton(
                                   icon: Icons.public,
                                   label: AppStrings.onlineMultiplayer,
-                                  onTap: () => _requireAuth(() =>
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                            builder: (_) => const RoomsScreen()),
-                                      )),
+                                  onTap: () => _requireAuth(
+                                      () => Navigator.of(context).push(
+                                            MaterialPageRoute(
+                                                builder: (_) =>
+                                                    const RoomsScreen()),
+                                          )),
                                 ),
                                 const SizedBox(height: 14),
                                 MenuButton(
                                   icon: Icons.meeting_room_outlined,
                                   label: AppStrings.privateRoom,
-                                  onTap: () => _requireAuth(() =>
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                            builder: (_) => const RoomsScreen()),
-                                      )),
+                                  onTap: () => _requireAuth(
+                                      () => Navigator.of(context).push(
+                                            MaterialPageRoute(
+                                                builder: (_) =>
+                                                    const RoomsScreen()),
+                                          )),
                                 ),
                               ],
                             ),
@@ -212,7 +215,7 @@ class _LandingScreenState extends State<LandingScreen>
 
   Future<void> _startLocalFlow({required bool vsCpu}) async {
     var count = 2;
-    await showDialog<void>(
+    final chosen = await showDialog<int>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
@@ -239,30 +242,45 @@ class _LandingScreenState extends State<LandingScreen>
               child: const Text('Cancel'),
             ),
             TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Play'),
+              onPressed: () => Navigator.pop(context, count),
+              child: const Text('Next'),
             ),
           ],
         ),
       ),
     );
-    if (!mounted) return;
-    _launchLocalGame(count, vsCpu: vsCpu);
+    if (!mounted || chosen == null) return;
+
+    // Ludo King asks which colour you want before the board appears.
+    final color = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => ColorPickScreen(playerCount: chosen, vsCpu: vsCpu),
+      ),
+    );
+    if (!mounted || color == null) return;
+    _launchLocalGame(chosen, myColor: color, vsCpu: vsCpu);
   }
 
-  void _launchLocalGame(int playerCount, {required bool vsCpu}) {
-    // Ludo King rule: with two players they sit diagonally (Red vs Yellow).
+  void _launchLocalGame(
+    int playerCount, {
+    required String myColor,
+    required bool vsCpu,
+  }) {
+    // Two players sit diagonally (Red vs Yellow), as Ludo King does.
     final colors = playerCount == 2
-        ? ['red', 'yellow']
+        ? (myColor == 'yellow' ? ['red', 'yellow'] : ['red', 'yellow'])
         : BoardGeometry.colors.take(playerCount).toList();
+    // The picked colour always belongs to the human; the rest are the bots.
+    final order = <String>[myColor, ...colors.where((c) => c != myColor)];
+
     final participants = <Participant>[];
-    for (var i = 0; i < colors.length; i++) {
+    for (var i = 0; i < order.length; i++) {
       if (vsCpu && i > 0) {
-        participants.add(
-            Participant(color: colors[i], name: 'CPU', isCpu: true));
+        participants
+            .add(Participant(color: order[i], name: 'CPU', isCpu: true));
       } else {
         participants.add(Participant(
-          color: colors[i],
+          color: order[i],
           name: vsCpu ? 'You' : 'P${i + 1}',
           isCpu: false,
         ));

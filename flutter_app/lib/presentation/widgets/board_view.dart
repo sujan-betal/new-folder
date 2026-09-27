@@ -2,7 +2,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../../core/constants/app_colors.dart';
 import '../../game/board_geometry.dart';
 import '../../game/ludo_engine.dart';
 import 'board_painter.dart';
@@ -19,6 +18,7 @@ class BoardView extends StatefulWidget {
     this.highlightCurrent = true,
     this.boardFx,
     this.landings = const {},
+    this.labels = const {},
   });
 
   /// Map of color -> list of 4 positions (-1 base .. 57 home).
@@ -29,6 +29,9 @@ class BoardView extends StatefulWidget {
   /// Relative positions the movable tokens would land on - ringed on the board
   /// so the player can see where a throw leads before committing.
   final Set<int> landings;
+
+  /// Player name per colour, drawn just outside each base.
+  final Map<String, String> labels;
 
   /// (color, tokenIndex) -> tap
   final void Function(String color, int tokenIndex)? onTokenTap;
@@ -48,6 +51,9 @@ class _BoardViewState extends State<BoardView> {
   /// Must match the controller's per-cell hop interval so the arc and the
   /// next board update stay in step.
   static const Duration _hop = Duration(milliseconds: 105);
+
+  /// Room reserved above and below the grid for the player names.
+  double labelStripFor(double side) => side * 0.075;
 
   void _consumeFx(double cell) {
     final fx = widget.boardFx;
@@ -74,9 +80,11 @@ class _BoardViewState extends State<BoardView> {
     return LayoutBuilder(
       builder: (context, constraints) {
         // Gold-lipped frame around the playing grid.
-        const framePad = 9.0;
+        // Ludo King gives the board a thin white margin, nothing more.
+        const framePad = 5.0;
         final outer = constraints.biggest.shortestSide;
-        final side = outer - framePad * 2;
+        final labelStrip = labelStripFor(outer);
+        final side = outer - framePad * 2 - labelStrip * 2;
         final cell = side / BoardGeometry.gridSize;
 
         _consumeFx(cell);
@@ -117,23 +125,20 @@ class _BoardViewState extends State<BoardView> {
         return Container(
           width: outer,
           height: outer,
-          padding: const EdgeInsets.all(framePad),
+          padding: EdgeInsets.fromLTRB(
+            framePad,
+            framePad + labelStrip,
+            framePad,
+            framePad + labelStrip,
+          ),
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFF2C4A86), Color(0xFF0F1830)],
-            ),
-            borderRadius: BorderRadius.circular(framePad * 2.6),
-            border: Border.all(
-              color: AppColors.gold.withValues(alpha: 0.65),
-              width: 1.8,
-            ),
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(framePad * 0.6),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.55),
-                blurRadius: 20,
-                offset: const Offset(0, 9),
+                color: Colors.black.withValues(alpha: 0.45),
+                blurRadius: 16,
+                offset: const Offset(0, 7),
               ),
             ],
           ),
@@ -151,6 +156,9 @@ class _BoardViewState extends State<BoardView> {
                     ),
                   ),
                 ),
+                // Names live in the margin just outside each base, the way
+                // Ludo King writes "You" and "Bot" beside the board.
+                for (final e in _nameLabels(side, cell, labelStrip)) e,
                 for (final spot in _landingSpots(cell))
                   _LandingHalo(
                     key: ValueKey(
@@ -179,6 +187,47 @@ class _BoardViewState extends State<BoardView> {
         );
       },
     );
+  }
+
+  /// Player names, positioned in the strip above (top-row bases) and below
+  /// (bottom-row bases) the board.
+  List<Widget> _nameLabels(double side, double cell, double labelStrip) {
+    if (widget.labels.isEmpty) return const [];
+    final out = <Widget>[];
+    for (final entry in widget.labels.entries) {
+      final origin = BoardGeometry.baseOrigins[entry.key];
+      if (origin == null || entry.value.isEmpty) continue;
+      final topRow = origin.dy < 4;
+      out.add(
+        Positioned(
+          key: ValueKey('name_${entry.key}'),
+          left: 0,
+          right: 0,
+          top: topRow ? -labelStrip * 0.92 : side + labelStrip * 0.12,
+          height: labelStrip,
+          child: Center(
+            child: Text(
+              entry.value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: labelStrip * 0.62,
+                fontWeight: FontWeight.w900,
+                height: 1.0,
+                color: Colors.white,
+                // Halo rather than a box, so it sits on the dark backdrop.
+                shadows: const [
+                  Shadow(color: Color(0xE6000000), blurRadius: 4),
+                  Shadow(color: Color(0xE6000000), blurRadius: 4),
+                  Shadow(color: Color(0xCC000000), blurRadius: 1),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    return out;
   }
 
   /// Centres of the squares the current throw can reach. Two tokens that can
@@ -313,11 +362,11 @@ class _HoppingTokenState extends State<_HoppingToken>
   }
 
   void _tick() {
-    final raw = _hop.value;
-    // Rise fast, land soft.
-    final eased = Curves.easeOutCubic.transform(raw);
+    // easeInOutCubic on a per-cell hop gives one continuous-looking glide
+    // instead of a stop-start stair.
+    final eased = Curves.easeInOutCubic.transform(_hop.value);
     setState(() {
-      _t = raw;
+      _t = _hop.value;
       _current = Offset.lerp(_from, widget.center, eased)!;
     });
   }
@@ -333,9 +382,12 @@ class _HoppingTokenState extends State<_HoppingToken>
 
   @override
   Widget build(BuildContext context) {
+    // A gentle lift, not a bounce. The token glides cell to cell and its
+    // shadow softens underneath; anything springier reads as the piece
+    // jumping on its own rather than being placed.
     final arc = _started && !_teleport ? math.sin(_t * math.pi) : 0.0;
     final size = widget.size;
-    final scale = 1.0 + arc * 0.10;
+    final scale = 1.0 + arc * 0.05;
 
     // footRatio is where the painted pawn meets the ground inside its box.
     const footRatio = PawnToken.heightRatio;

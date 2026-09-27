@@ -14,3 +14,6 @@ build/
 .idea/
 .vscode/
 *.iml
+
+# Generated board/dice previews from tool/preview_board.py
+flutter_app/build_preview/

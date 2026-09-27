@@ -226,12 +226,12 @@ class _DiceWidgetState extends State<DiceWidget>
           return Transform.translate(
             offset: Offset(0, -lift),
             child: SizedBox(
-              width: widget.tray ? widget.size * 1.7 : widget.size * 1.3,
-              height: widget.tray ? widget.size * 1.7 : widget.size * 1.3,
+              width: widget.tray ? widget.size * 1.25 : widget.size * 0.9,
+              height: widget.tray ? widget.size * 1.25 : widget.size * 0.9,
               child: Center(
                 child: widget.tray
                     ? _Tray(
-                        color: widget.color,
+                        color: _Tray.defaultTint,
                         child: cube,
                       )
                     : cube,
@@ -268,39 +268,40 @@ class _DiceWidgetState extends State<DiceWidget>
   int _targetOrDisplay() => widget.value > 0 ? widget.value : _displayValue;
 }
 
-/// Colored circular holder under the dice, tray style.
+/// Rounded-square tray behind the die.
+///
+/// Ludo King's tray is a soft neutral pink rather than the player's colour -
+/// the player is identified by the pin beside it, not by the tray. Passing a
+/// colour still tints it, which the board uses for the "whose turn" cue.
 class _Tray extends StatelessWidget {
   const _Tray({required this.color, required this.child});
 
   final Color color;
   final Widget child;
 
+  static const defaultTint = Color(0xFFF7B8C4);
+
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(
-          center: const Alignment(-0.25, -0.3),
+        borderRadius: BorderRadius.circular(34),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
           colors: [
-            Color.lerp(color, Colors.white, 0.42)!,
+            Color.lerp(color, Colors.white, 0.45)!,
             color,
-            Color.lerp(color, Colors.black, 0.48)!,
+            Color.lerp(color, Colors.black, 0.12)!,
           ],
-          stops: const [0.0, 0.55, 1.0],
+          stops: const [0.0, 0.6, 1.0],
         ),
-        border:
-            Border.all(color: Colors.white.withValues(alpha: 0.9), width: 3),
+        border: Border.all(color: Colors.white, width: 3),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.45),
-            blurRadius: 14,
-            offset: const Offset(0, 6),
-          ),
-          BoxShadow(
-            color: color.withValues(alpha: 0.4),
-            blurRadius: 20,
-            spreadRadius: 2,
+            color: Colors.black.withValues(alpha: 0.30),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
         ],
       ),

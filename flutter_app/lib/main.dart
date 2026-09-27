@@ -4,13 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-<<<<<<< HEAD
-import 'injection_container.dart' as di;
+import 'core/network/deep_link_service.dart';
 import 'core/sound/haptics.dart';
 import 'core/sound/sound_manager.dart';
-=======
-import 'core/network/deep_link_service.dart';
->>>>>>> 24fa8a1f77a071282b4ce0cc0689e66e3ca204c2
 import 'core/theme/app_theme.dart';
 import 'injection_container.dart' as di;
 import 'logic/providers/auth_provider.dart';
@@ -98,7 +94,7 @@ class _LudoAppState extends State<LudoApp> {
         title: 'Ludo Master',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.dark,
-<<<<<<< HEAD
+        navigatorKey: navigatorKey,
         home: const _AudioLifecycle(child: SplashScreen()),
       ),
     );
@@ -146,11 +142,3 @@ class _AudioLifecycleState extends State<_AudioLifecycle>
   @override
   Widget build(BuildContext context) => widget.child;
 }
-=======
-        navigatorKey: navigatorKey,
-        home: const SplashScreen(),
-      ),
-    );
-  }
-}
->>>>>>> 24fa8a1f77a071282b4ce0cc0689e66e3ca204c2

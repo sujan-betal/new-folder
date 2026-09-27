@@ -35,8 +35,9 @@ class GameController extends ChangeNotifier {
 
   final Random _random = Random();
 
-  late Map<String, List<int>> tokens =
-      {for (final p in participants) p.color: LudoEngine.initialTokens()};
+  late Map<String, List<int>> tokens = {
+    for (final p in participants) p.color: LudoEngine.initialTokens()
+  };
   String _current = BoardGeometry.colors.first;
   int _currentIndex = 0;
 
@@ -122,8 +123,7 @@ class GameController extends ChangeNotifier {
     if (targets.every((t) => t == null)) {
       SoundManager.instance.invalid();
       Haptics.instance.error();
-      onEvent?.call(
-          '${_label(color)} rolled $value - no move available');
+      onEvent?.call('${_label(color)} rolled $value - no move available');
       notifyListeners();
       await Future<void>.delayed(const Duration(milliseconds: 900));
       if (!_alive(gen)) return;
@@ -138,13 +138,8 @@ class GameController extends ChangeNotifier {
     phase = GamePhase.choosingMove;
     notifyListeners();
 
-    if (targets.where((t) => t != null).length == 1) {
-      await Future<void>.delayed(const Duration(milliseconds: 380));
-      if (!_alive(gen)) return;
-      await moveToken(movable.first);
-      return;
-    }
-
+    // No auto-move. Even with one legal token the player picks it themselves -
+    // a piece that jumps on its own reads as the game deciding for you.
     if (currentParticipant.isCpu) {
       await Future<void>.delayed(const Duration(milliseconds: 620));
       if (!_alive(gen)) return;
@@ -176,9 +171,7 @@ class GameController extends ChangeNotifier {
     }
     var target = fromBase ? 0 : start + value;
     if (target > LudoEngine.homeDone) target = LudoEngine.homeDone;
-    for (var pos = (fromBase ? -1 : start) + 1;
-        pos <= target;
-        pos++) {
+    for (var pos = (fromBase ? -1 : start) + 1; pos <= target; pos++) {
       tokens[color]![tokenIndex] = pos;
       if (!fromBase || pos > 0) {
         SoundManager.instance.move();
@@ -219,8 +212,8 @@ class GameController extends ChangeNotifier {
       SoundManager.instance.capture();
       Haptics.instance.heavy();
       for (final victim in result.capturedColors) {
-        onEvent?.call(
-            '${_label(color)} captured ${_label(victim)}! Extra turn');
+        onEvent
+            ?.call('${_label(color)} captured ${_label(victim)}! Extra turn');
       }
     }
     if (result.reachedHome) {
@@ -228,10 +221,9 @@ class GameController extends ChangeNotifier {
       Haptics.instance.success();
       onEvent?.call('${_label(color)} sent a token home! Extra turn');
     } else {
-      final landedAbs =
-          target <= LudoEngine.trackEnd
-              ? BoardGeometry.absoluteSquare(color, target)
-              : -1;
+      final landedAbs = target <= LudoEngine.trackEnd
+          ? BoardGeometry.absoluteSquare(color, target)
+          : -1;
       if (landedAbs >= 0 && BoardGeometry.safeSquares.contains(landedAbs)) {
         SoundManager.instance.safe();
       }

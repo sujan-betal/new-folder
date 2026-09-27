@@ -7,16 +7,16 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/sound/haptics.dart';
 import '../../../core/sound/sound_manager.dart';
 import '../../../data/models/room_model.dart';
+import '../../../game/board_geometry.dart';
 import '../../../game/ludo_engine.dart';
 import '../../../injection_container.dart' as di;
 import '../../../logic/providers/auth_provider.dart';
 import '../../../logic/providers/game_online_provider.dart';
 import '../../widgets/board_painter.dart';
 import '../../widgets/board_view.dart';
-import '../../widgets/dice_dock.dart';
+import '../../widgets/player_dock.dart';
 import '../../widgets/game_background.dart';
 import '../../widgets/game_banner.dart';
-import '../../widgets/player_strip.dart';
 import '../../widgets/sound_toggle.dart';
 import '../../widgets/victory_overlay.dart';
 
@@ -137,53 +137,6 @@ class _OnlineGameScreenState extends State<OnlineGameScreen> {
     return 'red';
   }
 
-<<<<<<< HEAD
-=======
-  /// One board-edge slot; renders that colour's own dice panel if seated.
-  Widget _cornerSlot(GameOnlineProvider provider, String color,
-      {required bool alignRight}) {
-    final game = provider.game;
-    if (game == null || !provider.activeColors.contains(color)) {
-      return const SizedBox.expand();
-    }
-    final active = game.currentTurn == color;
-    final waiting = game.diceValue == null;
-    final mine = color == provider.myColor;
-    return Align(
-      alignment:
-          alignRight ? Alignment.centerRight : Alignment.centerLeft,
-      child: PlayerDicePanel(
-        colorName: color,
-        name: provider.nameOf(color),
-        avatar: provider.avatarOf(color),
-        tokensHome: provider.tokensHomeOf(color),
-        active: active,
-        glowing: active && waiting && !provider.busy && !mine,
-        diceValue: game.diceValue ?? 1,
-        rolling: provider.isRolling(color),
-        canRoll: provider.canRoll && mine,
-        onRollTap: provider.rollDice,
-      ),
-    );
-  }
-
-  Widget _cornerRow(GameOnlineProvider provider,
-      {required String left, required String right}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      child: SizedBox(
-        height: 78,
-        child: Row(
-          children: [
-            Expanded(child: _cornerSlot(provider, left, alignRight: false)),
-            Expanded(child: _cornerSlot(provider, right, alignRight: true)),
-          ],
-        ),
-      ),
-    );
-  }
-
->>>>>>> 24fa8a1f77a071282b4ce0cc0689e66e3ca204c2
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider.value(
@@ -192,7 +145,6 @@ class _OnlineGameScreenState extends State<OnlineGameScreen> {
         builder: (context, provider, _) {
           final game = provider.game;
 
-<<<<<<< HEAD
           return BannerHost(
             key: _banners,
             child: Stack(
@@ -235,128 +187,6 @@ class _OnlineGameScreenState extends State<OnlineGameScreen> {
                     ),
                   ),
               ],
-=======
-          return Scaffold(
-            body: Container(
-              decoration:
-                  const BoxDecoration(gradient: AppColors.backgroundGradient),
-              child: SafeArea(
-                child: game == null
-                    ? Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const CircularProgressIndicator(
-                                color: AppColors.gold),
-                            const SizedBox(height: 12),
-                            Text(provider.error ?? 'Loading game...',
-                                style: const TextStyle(fontSize: 13)),
-                          ],
-                        ),
-                      )
-                    : Column(
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 8),
-                            child: Row(
-                              children: [
-                                IconButton(
-                                  onPressed: () =>
-                                      Navigator.of(context).pop(),
-                                  icon: const Icon(Icons.arrow_back_ios_new,
-                                      color: Colors.white),
-                                ),
-                                const SizedBox(width: 4),
-                                Expanded(
-                                  child: Text(
-                                    'Room ${game.id} - ${game.status}',
-                                    style: const TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w700),
-                                  ),
-                                ),
-                                if (game.isActive && game.diceValue == null)
-                                  Container(
-                                    margin: const EdgeInsets.only(right: 8),
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 8, vertical: 3),
-                                    decoration: BoxDecoration(
-                                      color: _secondsLeft <= 5
-                                          ? Colors.red.withValues(alpha: 0.25)
-                                          : Colors.black26,
-                                      borderRadius: BorderRadius.circular(10),
-                                      border: Border.all(
-                                        color: _secondsLeft <= 5
-                                            ? Colors.redAccent
-                                            : Colors.white24,
-                                      ),
-                                    ),
-                                    child: Text(
-                                      '\u23F1 ${_secondsLeft}s',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w800,
-                                        color: _secondsLeft <= 5
-                                            ? Colors.redAccent
-                                            : Colors.white70,
-                                      ),
-                                    ),
-                                  ),
-                                const SizedBox(width: 4),
-                                const SoundToggle(),
-                                Text(
-                                  'You: ${provider.myColor ?? '-'}',
-                                  style: TextStyle(
-                                      fontSize: 13,
-                                      color: provider.myColor == null
-                                          ? Colors.white54
-                                          : BoardPainter.colorOf(
-                                              provider.myColor!)),
-                                ),
-                              ],
-                            ),
-                          ),
-                          _YourTurnBanner(
-                            show: provider.isMyTurn &&
-                                game.diceValue == null &&
-                                !provider.busy,
-                          ),
-                          Expanded(
-                            flex: 7,
-                            child: Column(
-                              children: [
-                                // Ludo King layout: each player's own dice
-                                // beside their base corner of the board.
-                                _cornerRow(provider,
-                                    left: 'red', right: 'green'),
-                                Expanded(
-                                  child: Center(
-                                    child: AspectRatio(
-                                      aspectRatio: 1,
-                                      child: Padding(
-                                        padding: const EdgeInsets.all(4),
-                                        child: BoardView(
-                                          tokens: provider.displayTokens,
-                                          currentColor: game.currentTurn,
-                                          movable: provider.movableForMe,
-                                          boardFx: provider.boardFx,
-                                          onTokenTap: (_, index) =>
-                                              provider.moveToken(index),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                _cornerRow(provider,
-                                    left: 'blue', right: 'yellow'),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-              ),
->>>>>>> 24fa8a1f77a071282b4ce0cc0689e66e3ca204c2
             ),
           );
         },
@@ -369,35 +199,62 @@ class _OnlineGameScreenState extends State<OnlineGameScreen> {
     final isMe = current == provider.myColor;
     final waiting = game.diceValue == null;
 
-    final prompt = !isMe
-        ? DicePrompt.waiting
-        : (waiting ? DicePrompt.roll : DicePrompt.pickToken);
-
     final movable = provider.movableForMe;
     final landings = isMe && !waiting && game.diceValue != null
         ? LudoEngine.landingPositions(game.tokens[current]!, game.diceValue!)
         : const <int>{};
 
+    final labels = {
+      for (final color in provider.activeColors)
+        color: provider.nameOf(color).replaceAll(' (You)', ''),
+    };
+
+    // Each seat parks its own die in the corner of its own base.
+    Widget dockFor(String color) {
+      if (!provider.activeColors.contains(color)) {
+        return const SizedBox.shrink();
+      }
+      final active = current == color;
+      return PlayerDock(
+        colorName: color,
+        name: provider.nameOf(color),
+        avatar: provider.avatarOf(color),
+        tokensHome: provider.tokensHomeOf(color),
+        diceValue: game.diceValue ?? 1,
+        rolling: active && waiting && provider.busy,
+        prompt: !active
+            ? DicePrompt.waiting
+            : (waiting ? DicePrompt.roll : DicePrompt.pickToken),
+        onRollTap: active ? provider.rollDice : null,
+        pinFirst: BoardGeometry.baseOrigins[color]!.dx >= 4,
+      );
+    }
+
+    Widget dockRow({required String left, required String right}) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+                child: Align(
+                    alignment: Alignment.centerLeft, child: dockFor(left))),
+            Expanded(
+                child: Align(
+                    alignment: Alignment.centerRight, child: dockFor(right))),
+          ],
+        ),
+      );
+    }
+
     return Column(
       children: [
         _header(game),
-        PlayerStrip(
-          children: [
-            for (final color in provider.activeColors)
-              PlayerChip(
-                colorName: color,
-                name: provider.nameOf(color),
-                avatar: provider.avatarOf(color),
-                tokensHome: provider.tokensHomeOf(color),
-                active: current == color,
-                isMe: color == provider.myColor,
-              ),
-          ],
-        ),
+        dockRow(left: 'red', right: 'green'),
         Expanded(
           child: Center(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 8),
               child: AspectRatio(
                 aspectRatio: 1,
                 child: BoardView(
@@ -405,6 +262,7 @@ class _OnlineGameScreenState extends State<OnlineGameScreen> {
                   currentColor: current,
                   movable: movable,
                   landings: landings,
+                  labels: labels,
                   boardFx: provider.boardFx,
                   onTokenTap: (_, index) => provider.moveToken(index),
                 ),
@@ -412,16 +270,7 @@ class _OnlineGameScreenState extends State<OnlineGameScreen> {
             ),
           ),
         ),
-        DiceDock(
-          colorName: current,
-          name: provider.nameOf(current),
-          avatar: provider.avatarOf(current),
-          prompt: prompt,
-          diceValue: game.diceValue ?? 1,
-          rolling: isMe && waiting && provider.busy,
-          onRollTap: provider.rollDice,
-          trailing: game.isActive && waiting ? _timerChip() : null,
-        ),
+        dockRow(left: 'blue', right: 'yellow'),
       ],
     );
   }
@@ -446,6 +295,8 @@ class _OnlineGameScreenState extends State<OnlineGameScreen> {
               ),
             ),
           ),
+          if (game.isActive && game.diceValue == null) _timerChip(),
+          const SizedBox(width: 4),
           const SoundToggle(),
         ],
       ),

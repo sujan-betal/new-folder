@@ -6,13 +6,13 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/sound/haptics.dart';
 import '../../../core/sound/sound_manager.dart';
 import '../../../game/game_controller.dart';
+import '../../../game/board_geometry.dart';
 import '../../../game/ludo_engine.dart';
 import '../../widgets/board_painter.dart';
 import '../../widgets/board_view.dart';
-import '../../widgets/dice_dock.dart';
+import '../../widgets/player_dock.dart';
 import '../../widgets/game_background.dart';
 import '../../widgets/game_banner.dart';
-import '../../widgets/player_strip.dart';
 import '../../widgets/sound_toggle.dart';
 import '../../widgets/victory_overlay.dart';
 
@@ -169,39 +169,69 @@ class _LocalGameScreenState extends State<LocalGameScreen>
     final controller = _controller;
     _reactToFx();
 
-    final current = _participantOf(controller.currentColor)!;
     final dice = controller.diceValue;
     final landings = controller.phase == GamePhase.choosingMove && dice != null
         ? LudoEngine.landingPositions(
             controller.tokens[controller.currentColor]!, dice)
         : const <int>{};
 
-    final prompt = switch (controller.phase) {
-      GamePhase.awaitingRoll || GamePhase.rolling => DicePrompt.roll,
-      GamePhase.choosingMove => DicePrompt.pickToken,
-      _ => DicePrompt.waiting,
+    final labels = {
+      for (final p in controller.participants) p.color: p.name,
     };
+
+    // Every seat keeps its own die, parked in the corner of its own base.
+    // Top-row players dock above the board, bottom-row players below it.
+    Widget dockFor(String color) {
+      final p = _participantOf(color);
+      if (p == null) return const SizedBox.shrink();
+      final prompt = controller.currentColor != color
+          ? DicePrompt.waiting
+          : switch (controller.phase) {
+              GamePhase.choosingMove ||
+              GamePhase.moving =>
+                DicePrompt.pickToken,
+              _ => DicePrompt.roll,
+            };
+      return PlayerDock(
+        colorName: p.color,
+        name: p.name,
+        avatar: p.avatar,
+        tokensHome: LudoEngine.tokensHome(controller.tokens[p.color]!),
+        diceValue: controller.diceValue ?? 1,
+        rolling: controller.currentColor == p.color &&
+            controller.phase == GamePhase.rolling,
+        prompt: prompt,
+        onRollTap: controller.roll,
+        // Right-hand bases read pin-then-die, left-hand bases die-then-pin.
+        pinFirst: BoardGeometry.baseOrigins[p.color]!.dx >= 4,
+      );
+    }
+
+    Widget dockRow({required String left, required String right}) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+                child: Align(
+                    alignment: Alignment.centerLeft, child: dockFor(left))),
+            Expanded(
+                child: Align(
+                    alignment: Alignment.centerRight, child: dockFor(right))),
+          ],
+        ),
+      );
+    }
 
     return Column(
       children: [
         _header(),
-        PlayerStrip(
-          children: [
-            for (final p in controller.participants)
-              PlayerChip(
-                colorName: p.color,
-                name: p.name,
-                avatar: p.avatar,
-                tokensHome: LudoEngine.tokensHome(controller.tokens[p.color]!),
-                active: controller.currentColor == p.color,
-                isMe: !p.isCpu,
-              ),
-          ],
-        ),
+        dockRow(left: 'red', right: 'green'),
         Expanded(
           child: Center(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 8),
               child: AspectRatio(
                 aspectRatio: 1,
                 child: AnimatedBuilder(
@@ -219,6 +249,7 @@ class _LocalGameScreenState extends State<LocalGameScreen>
                     currentColor: controller.currentColor,
                     movable: controller.movable,
                     landings: landings,
+                    labels: labels,
                     boardFx: controller.boardFx,
                     onTokenTap: (color, index) => controller.moveToken(index),
                   ),
@@ -227,15 +258,7 @@ class _LocalGameScreenState extends State<LocalGameScreen>
             ),
           ),
         ),
-        DiceDock(
-          colorName: current.color,
-          name: current.name,
-          avatar: current.avatar,
-          prompt: prompt,
-          diceValue: dice ?? 1,
-          rolling: controller.phase == GamePhase.rolling,
-          onRollTap: controller.roll,
-        ),
+        dockRow(left: 'blue', right: 'yellow'),
       ],
     );
   }
